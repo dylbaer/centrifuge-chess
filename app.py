@@ -9,6 +9,7 @@ Deploy:        push to GitHub -> share.streamlit.io
 
 from __future__ import annotations
 
+import base64
 import inspect
 import io
 import json
@@ -113,6 +114,9 @@ SUITE3 = Room("suite3", "SUITE 3", "unscheduled run", "#3a0a16", "#160208", "#ff
               "#180309", "#210610", "roach", "airlock")
 
 # Fixed tour of the building, one room per level.
+ALL_ROOMS = [LOBBY, VIVARIUM, RADIO, AQUATICS, BSL4, XENO, CRYO, FLYROOM, GLASSWASH, SUITE3]
+
+# Fixed tour of the building, one room per level.
 ROOM_TOUR = [LOBBY, LOBBY, VIVARIUM, FLYROOM, AQUATICS, RADIO,
              GLASSWASH, CRYO, BSL4, XENO, CRYO, RADIO, XENO]
 
@@ -133,8 +137,11 @@ class LevelSpec:
     par_seconds: int
     zone: Zone
     style: int = 0            # 0 fixed-angle, 1 swinging bucket, 2 drilled plate
-    time_limit: int = 0
+    time_limit: int = 0       # 0 = untimed
     sudden_death: bool = False
+    hide_labels: bool = False  # frost: slot numbers iced over
+    flicker: bool = False      # failing power: lights and needle cut out
+    gimmick: str = ""          # banner shown to the player
 
 
 LEVELS: List[LevelSpec] = [
@@ -143,9 +150,12 @@ LEVELS: List[LevelSpec] = [
     LevelSpec("MICROSPIN 12-X", "mixed tube sizes", 12, 6, 2, 1, (1.5, 2.0), 0.55, 45, TEACHING, 0),
     LevelSpec("BENCHTOP 16", "one bucket is cracked", 16, 8, 2, 2, (1.5, 2.0), 0.50, 55, CORE, 1),
     LevelSpec("BENCHTOP 18", "thirds, not halves", 18, 9, 2, 2, (1.5, 2.0, 5.0), 0.50, 65, CORE, 2),
-    LevelSpec("SWING-24", "swinging bucket rotor", 24, 12, 3, 3, (1.5, 2.0, 5.0), 0.50, 75, CORE, 1),
-    LevelSpec("CLINICAL-20", "no thirds on this one", 20, 10, 3, 4, (2.0, 5.0, 15.0), 0.48, 80, CORE, 0),
-    LevelSpec("SWING-24 HD", "15 mL conicals", 24, 12, 3, 5, (2.0, 5.0, 15.0), 0.45, 80, COLD, 1),
+    LevelSpec("SWING-24", "swinging bucket rotor", 24, 12, 3, 3, (1.5, 2.0, 5.0), 0.50, 75, CORE, 1,
+              flicker=True, gimmick="POWER FLICKER \u2014 the lights keep going"),
+    LevelSpec("CLINICAL-20", "no thirds on this one", 20, 10, 3, 4, (2.0, 5.0, 15.0), 0.48, 80, CORE, 0,
+              time_limit=60, gimmick="FIRE DRILL \u2014 60 seconds, then everyone leaves"),
+    LevelSpec("SWING-24 HD", "15 mL conicals", 24, 12, 3, 5, (2.0, 5.0, 15.0), 0.45, 80, COLD, 1,
+              hide_labels=True, gimmick="FROSTED LID \u2014 position numbers are iced over"),
     LevelSpec("ULTRA-30", "high speed, low patience", 30, 15, 3, 5, (1.5, 2.0, 5.0, 15.0), 0.45, 90, COLD, 0),
     LevelSpec("HEMATO-32", "half the plate is dead", 32, 16, 4, 6, (1.5, 2.0, 5.0, 15.0), 0.42, 95, COLD, 2),
     LevelSpec("ULTRA-36", "seven dead positions", 36, 18, 4, 7, (1.5, 2.0, 5.0, 15.0), 0.40, 100, COLD, 2),
@@ -409,6 +419,13 @@ body, p, li, div[data-testid="stMarkdownContainer"] { font-family: 'IBM Plex Mon
 .tray-need { background:rgba(255,182,39,0.13); border:2px solid #ffb627; color:#ffb627; }
 .tray-done { background:rgba(91,227,106,0.13); border:2px solid #5be36a; color:#5be36a; }
 .pips { text-align:center; font-size:1.35rem; letter-spacing:0.32rem; margin:0.1rem 0 0.4rem 0; }
+.cc-gimmick { font-family:'Press Start 2P',monospace; font-size:0.62rem; color:#ff3d8b;
+              text-align:center; letter-spacing:.06em; border:2px solid #ff3d8b;
+              background:rgba(255,61,139,.10); border-radius:3px; padding:0.5rem;
+              margin:0 auto 0.55rem auto; max-width:640px; line-height:1.7;
+              animation:gpulse 1.6s ease-in-out infinite; }
+@keyframes gpulse { 50% { opacity:.62; } }
+.cc-centre { text-align:center; }
 .pip-done { color:#3ff2e0; } .pip-todo { color:#39405f; }
 
 .stButton > button { font-family:'IBM Plex Mono',monospace !important; font-weight:600;
@@ -543,79 +560,382 @@ def rack(left: str, bottom: int, col: str, n: int = 5) -> str:
             f'background:#4a5580;border-radius:2px"></div>{tubes}</div>')
 
 
-def prop_wall(room: Room, seed: int) -> str:
-    """Large fixtures specific to the room."""
-    rng = random.Random(seed)
+# ==========================================================================
+# ROOM FIXTURES — each room must read instantly as what it is
+# ==========================================================================
+def _sign(left: str, top: int, text: str, sub: str, col: str) -> str:
+    return (f'<div class="sign" style="left:{left};top:{top}px;max-width:190px">{text}'
+            f'<br><span style="opacity:.6">{sub}</span></div>')
+
+
+def _label(left: str, bottom: int, text: str, col: str, size: int = 7) -> str:
+    return (f'<div style="position:absolute;left:{left};bottom:{bottom}px;z-index:7;'
+            f'font-family:\'Press Start 2P\',monospace;font-size:{size}px;color:{col};'
+            f'opacity:.8;letter-spacing:.08em">{text}</div>')
+
+
+def props_vivarium(room: Room, rng: random.Random) -> str:
     a = room.accent
     out = []
-    if room.prop == "cages":
-        for k in range(4):
-            x = 6 + k * 24
+    # three-tier mouse cage racks
+    for r, x in enumerate((3, 20)):
+        for tier in range(3):
+            y = 40 + tier * 46
+            bars = "".join(f'<div style="position:absolute;left:{5+j*11}px;top:2px;bottom:2px;'
+                           f'width:2px;background:#8d9a7a"></div>' for j in range(11))
+            mice = "".join(
+                f'<div style="position:absolute;bottom:4px;left:{12+k*34}px;width:15px;height:8px;'
+                f'border-radius:50% 40% 40% 50%;background:#e6dfd4"></div>'
+                f'<div style="position:absolute;bottom:7px;left:{4+k*34}px;width:10px;height:2px;'
+                f'background:#e6dfd4"></div>' for k in range(rng.randint(1, 3)))
             out.append(
-                f'<div style="position:absolute;left:{x}%;bottom:36px;width:74px;height:56px;'
-                f'border:2px solid #6b7a5a;background:rgba(255,255,255,0.04);z-index:3">'
-                + "".join(f'<div style="position:absolute;left:{6+j*9}px;top:0;bottom:0;width:1px;'
-                          f'background:#6b7a5a;opacity:.7"></div>' for j in range(7))
-                + f'<div style="position:absolute;bottom:3px;left:8px;width:14px;height:7px;'
-                  f'border-radius:50%;background:#c9a37a"></div></div>')
-    elif room.prop == "drums":
-        for k in range(4):
-            x = 8 + k * 23
-            out.append(
-                f'<div style="position:absolute;left:{x}%;bottom:36px;width:44px;height:58px;'
-                f'background:#4a4712;border:2px solid {a};border-radius:4px;z-index:3;'
-                f'box-shadow:0 0 26px rgba(212,255,61,.35)">'
-                f'<div style="position:absolute;top:14px;left:11px;width:22px;height:22px;'
-                f'border-radius:50%;border:3px solid {a};opacity:.9"></div>'
-                f'<div style="position:absolute;top:22px;left:20px;width:5px;height:5px;'
-                f'border-radius:50%;background:{a}"></div></div>')
-    elif room.prop == "tanks":
-        for k in range(3):
-            x = 7 + k * 31
-            out.append(
-                f'<div style="position:absolute;left:{x}%;bottom:36px;width:104px;height:66px;'
-                f'background:linear-gradient(180deg,rgba(63,210,242,.30),rgba(63,210,242,.13));'
-                f'border:2px solid {a};z-index:3;box-shadow:inset 0 0 24px rgba(63,210,242,.35)"></div>')
-    elif room.prop == "airlock":
-        out.append(
-            f'<div style="position:absolute;left:50%;margin-left:-58px;bottom:36px;width:116px;height:96px;'
-            f'border:4px solid {a};border-radius:8px;background:rgba(0,0,0,.35);z-index:3;'
-            f'box-shadow:0 0 34px {a}44">'
-            f'<div style="position:absolute;top:10px;left:50%;margin-left:-26px;width:52px;height:52px;'
-            f'border-radius:50%;border:3px solid {a};opacity:.8"></div></div>')
-        for k in (12, 78):
-            out.append(f'<div style="position:absolute;left:{k}%;bottom:36px;width:30px;height:74px;'
-                       f'background:#e8e6f0;opacity:.16;border-radius:14px 14px 3px 3px;z-index:3"></div>')
-    elif room.prop == "pod":
-        out.append(
-            f'<div style="position:absolute;left:50%;margin-left:-46px;bottom:36px;width:92px;height:110px;'
-            f'border-radius:46px 46px 8px 8px;background:linear-gradient(180deg,rgba(79,255,176,.28),'
-            f'rgba(79,255,176,.08));border:3px solid {a};z-index:3;box-shadow:0 0 40px {a}55"></div>')
-    elif room.prop == "dewar":
-        for k in range(4):
-            x = 9 + k * 22
-            out.append(
-                f'<div style="position:absolute;left:{x}%;bottom:36px;width:50px;height:62px;'
-                f'background:#dfeef7;opacity:.20;border:2px solid {a};border-radius:6px 6px 3px 3px;z-index:3"></div>'
-                f'<div style="position:absolute;left:{x}%;bottom:88px;width:50px;height:18px;z-index:3;'
-                f'background:radial-gradient(ellipse,rgba(255,255,255,.5),transparent 70%);'
-                f'animation:fog 3.4s ease-in-out infinite"></div>')
-    elif room.prop == "vials":
-        for k in range(9):
-            x = 5 + k * 10.5
-            out.append(
-                f'<div style="position:absolute;left:{x}%;bottom:36px;width:17px;height:44px;'
-                f'background:rgba(255,200,97,.18);border:1px solid {a};border-radius:2px 2px 4px 4px;z-index:3">'
-                f'<div style="position:absolute;bottom:0;left:0;right:0;height:11px;background:#8a5a1a;opacity:.75"></div></div>')
-    else:  # sinks
-        out.append(f'<div style="position:absolute;left:4%;right:4%;bottom:74px;height:7px;'
-                   f'background:rgba(255,255,255,.13);z-index:2"></div>')
-        for k in range(3):
-            x = 10 + k * 30
-            out.append(
-                f'<div style="position:absolute;left:{x}%;bottom:36px;width:86px;height:38px;'
-                f'background:#39405f;border:2px solid #5a6486;border-radius:3px;z-index:3"></div>')
+                f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:130px;height:42px;'
+                f'border:3px solid #8d9a7a;background:rgba(220,214,190,0.10);z-index:4">'
+                f'{bars}{mice}'
+                f'<div style="position:absolute;right:-9px;top:8px;width:9px;height:22px;'
+                f'background:#bcd6e8;border:1px solid #8d9a7a"></div></div>')
+    # primate enclosure with rope
+    out.append(
+        f'<div style="position:absolute;left:44%;bottom:40px;width:230px;height:150px;'
+        f'border:4px solid #8d9a7a;background:rgba(0,0,0,.22);z-index:4">'
+        + "".join(f'<div style="position:absolute;left:{8+j*17}px;top:0;bottom:0;width:3px;'
+                  f'background:#8d9a7a;opacity:.85"></div>' for j in range(13))
+        + f'<div style="position:absolute;top:16px;left:6px;right:6px;height:3px;background:#7a5c3a;'
+          f'border-radius:2px"></div>'
+          f'<div style="position:absolute;top:19px;left:52%;width:3px;height:44px;background:#7a5c3a"></div>'
+          f'<div style="position:absolute;top:61px;left:44%;width:44px;height:6px;background:#7a5c3a;'
+          f'border-radius:2px"></div></div>')
+    # feed bins + hay
+    out.append(f'<div style="position:absolute;left:76%;bottom:40px;width:60px;height:54px;'
+               f'background:#6b5a3a;border:2px solid #8d9a7a;border-radius:3px;z-index:4"></div>'
+               f'<div style="position:absolute;left:84%;bottom:40px;width:60px;height:40px;'
+               f'background:#b39a5c;border-radius:4px;z-index:4;opacity:.8"></div>')
+    out.append(_label("44%", 196, "PRIMATE ENCLOSURE 2", a))
+    out.append(_label("3%", 182, "MOUSE HOLDING", a))
     return "".join(out)
+
+
+def props_fly(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # vial racks, three shelves
+    for shelf, y in enumerate((40, 96, 152)):
+        for k in range(14):
+            x = 3 + k * 6.6
+            fill = rng.choice(["#8a5a1a", "#a86a20", "#6d4614"])
+            out.append(
+                f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:19px;height:48px;'
+                f'background:rgba(255,200,97,.16);border:1px solid {a};border-radius:2px 2px 5px 5px;z-index:4">'
+                f'<div style="position:absolute;bottom:0;left:0;right:0;height:14px;background:{fill};opacity:.85"></div>'
+                f'<div style="position:absolute;top:2px;left:5px;width:8px;height:5px;background:#dcd6c4;'
+                f'border-radius:2px"></div></div>')
+        out.append(f'<div style="position:absolute;left:2%;right:2%;bottom:{y-6}px;height:6px;'
+                   f'background:#5a4a2a;z-index:3"></div>')
+    # CO2 pad + scope + banana crate
+    out.append(f'<div style="position:absolute;left:70%;bottom:208px;width:80px;height:14px;'
+               f'background:#dcd6c4;opacity:.5;border-radius:2px;z-index:4"></div>')
+    out.append(microscope("60%", 208, a))
+    out.append(f'<div style="position:absolute;left:86%;bottom:208px;width:56px;height:30px;'
+               f'background:#7a5c22;border:2px solid #a8863a;z-index:4"></div>'
+               f'<div style="position:absolute;left:87%;bottom:230px;width:44px;height:12px;'
+               f'background:#e8c95c;border-radius:8px;z-index:4"></div>')
+    # fly strips
+    for k in range(4):
+        out.append(f'<div style="position:absolute;left:{16+k*22}%;top:0;width:7px;height:{60+k*14}px;'
+                   f'background:#c8a24a;opacity:.75;z-index:5"></div>')
+    out.append(_label("2%", 212, "DROSOPHILA STOCKS", a))
+    return "".join(out)
+
+
+def props_aquatics(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    for tier, y in enumerate((40, 118)):
+        for k in range(5):
+            x = 2 + k * 19.5
+            fish = "".join(
+                f'<div style="position:absolute;top:{rng.randint(8,50)}px;left:{rng.randint(6,110)}px;'
+                f'width:12px;height:5px;border-radius:50% 20% 20% 50%;background:{a};opacity:.85"></div>'
+                for _ in range(rng.randint(2, 5)))
+            out.append(
+                f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:140px;height:68px;'
+                f'border:3px solid {a};z-index:4;overflow:hidden;'
+                f'background:linear-gradient(180deg,rgba(63,210,242,.34),rgba(63,210,242,.14));'
+                f'box-shadow:inset 0 0 26px rgba(63,210,242,.4)">{fish}'
+                f'<div style="position:absolute;bottom:0;left:0;right:0;height:9px;background:#2a4b57;opacity:.8"></div>'
+                f'</div>')
+    # plumbing + nets
+    out.append(f'<div style="position:absolute;left:0;right:0;bottom:196px;height:9px;'
+               f'background:#4a6b78;z-index:3"></div>')
+    for k in range(6):
+        out.append(f'<div style="position:absolute;left:{7+k*16}%;bottom:186px;width:7px;height:16px;'
+                   f'background:#4a6b78;z-index:3"></div>')
+    out.append(f'<div style="position:absolute;left:88%;bottom:212px;width:8px;height:52px;'
+               f'background:#8a7a5a;z-index:4"></div>'
+               f'<div style="position:absolute;left:85%;bottom:252px;width:44px;height:26px;'
+               f'border:3px solid #8a7a5a;border-radius:50%;z-index:4"></div>')
+    out.append(_label("2%", 214, "ZEBRAFISH SYSTEM &mdash; 3,140 TANKS", a))
+    return "".join(out)
+
+
+def props_radio(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # lead brick wall
+    for row in range(4):
+        for k in range(9):
+            out.append(f'<div style="position:absolute;left:{2+k*7.4+ (3.7 if row%2 else 0)}%;'
+                       f'bottom:{40+row*24}px;width:82px;height:22px;background:#4a4a52;'
+                       f'border:1px solid #62626e;z-index:3"></div>')
+    # waste drums with trefoil
+    for k in range(4):
+        x = 66 + k * 8
+        tre = "".join(
+            f'<div style="position:absolute;left:50%;top:50%;width:0;height:0;'
+            f'border-left:9px solid transparent;border-right:9px solid transparent;'
+            f'border-bottom:15px solid {a};transform-origin:center 0;'
+            f'transform:translate(-50%,0) rotate({j*120}deg)"></div>' for j in range(3))
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:40px;width:52px;height:74px;'
+            f'background:#54520e;border:3px solid {a};border-radius:5px;z-index:5;'
+            f'box-shadow:0 0 32px rgba(212,255,61,.45)">'
+            f'<div style="position:absolute;top:18px;left:50%;margin-left:-19px;width:38px;height:38px;'
+            f'border-radius:50%;background:rgba(0,0,0,.35);overflow:hidden">{tre}</div></div>')
+    # geiger counter
+    out.append(f'<div style="position:absolute;left:52%;bottom:120px;width:64px;height:44px;'
+               f'background:#2a2a14;border:2px solid {a};border-radius:3px;z-index:5">'
+               f'<div style="position:absolute;bottom:8px;left:50%;width:3px;height:24px;'
+               f'background:{a};transform-origin:bottom center;'
+               f'animation:needle .28s ease-in-out infinite alternate"></div></div>')
+    # hazard tape
+    out.append(f'<div style="position:absolute;left:0;right:0;bottom:190px;height:16px;z-index:6;'
+               f'background:repeating-linear-gradient(45deg,{a} 0 14px,#1a1907 14px 28px);opacity:.85"></div>')
+    out.append(_label("2%", 212, "RADIOISOTOPE &mdash; DOSIMETER REQUIRED", a))
+    return "".join(out)
+
+
+def props_cryo(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    for k in range(5):
+        x = 3 + k * 15
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:40px;width:96px;height:104px;'
+            f'background:linear-gradient(180deg,#dfeef7 0%,#9fc4d6 100%);opacity:.30;'
+            f'border:3px solid {a};border-radius:10px 10px 4px 4px;z-index:4"></div>'
+            f'<div style="position:absolute;left:{x}%;bottom:140px;width:96px;height:16px;'
+            f'background:#cfe6f2;opacity:.35;border-radius:8px;z-index:4"></div>'
+            f'<div style="position:absolute;left:{x}%;bottom:152px;width:96px;height:34px;z-index:5;'
+            f'background:radial-gradient(ellipse,rgba(255,255,255,.55),transparent 72%);'
+            f'animation:fog {2.8+k*0.4:.1f}s ease-in-out infinite"></div>')
+    # LN2 line + thermometer
+    out.append(f'<div style="position:absolute;left:0;right:0;bottom:206px;height:8px;'
+               f'background:#8fb8cc;opacity:.5;z-index:3"></div>')
+    out.append(f'<div style="position:absolute;left:80%;bottom:150px;width:70px;height:52px;'
+               f'background:#0b1c24;border:2px solid {a};border-radius:3px;z-index:6;'
+               f'font-family:\'Press Start 2P\',monospace;font-size:11px;color:{a};'
+               f'display:flex;align-items:center;justify-content:center">-80&deg;</div>')
+    # frost on the lens
+    for _ in range(26):
+        out.append(f'<div style="position:absolute;left:{rng.randint(0,98)}%;top:{rng.randint(0,80)}%;'
+                   f'width:{rng.randint(2,6)}px;height:{rng.randint(2,6)}px;background:#fff;opacity:.22;'
+                   f'border-radius:50%;z-index:7"></div>')
+    out.append(_label("2%", 250, "CRYOSTORAGE &mdash; VAPOUR PHASE", a))
+    return "".join(out)
+
+
+def props_bsl4(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # airlock
+    out.append(
+        f'<div style="position:absolute;left:50%;margin-left:-95px;bottom:40px;width:190px;height:180px;'
+        f'border:6px solid {a};border-radius:10px 10px 0 0;background:rgba(0,0,0,.42);z-index:4;'
+        f'box-shadow:0 0 44px {a}55">'
+        f'<div style="position:absolute;top:28px;left:50%;margin-left:-42px;width:84px;height:84px;'
+        f'border-radius:50%;border:5px solid {a};opacity:.85;background:rgba(200,107,255,.10)"></div>'
+        + "".join(f'<div style="position:absolute;top:{40+j*22}px;right:-14px;width:11px;height:11px;'
+                  f'border-radius:50%;background:{a};opacity:.8"></div>' for j in range(3))
+        + '</div>')
+    # hazmat suits hanging
+    for k, x in enumerate((6, 17, 76, 87)):
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:64px;width:52px;height:118px;'
+            f'background:#e8e6f0;opacity:.20;border-radius:24px 24px 5px 5px;z-index:4"></div>'
+            f'<div style="position:absolute;left:{x}%;bottom:176px;width:52px;height:8px;'
+            f'background:#6b7a8a;z-index:4"></div>'
+            f'<div style="position:absolute;left:calc({x}% + 14px);bottom:150px;width:24px;height:20px;'
+            f'border-radius:50%;background:{a};opacity:.35;z-index:5"></div>')
+    # biohazard trefoil signs
+    for x in (30, 66):
+        tre = "".join(
+            f'<div style="position:absolute;left:50%;top:52%;width:16px;height:16px;'
+            f'border:4px solid {a};border-radius:50%;transform-origin:center -6px;'
+            f'transform:translate(-50%,-50%) rotate({j*120}deg)"></div>' for j in range(3))
+        out.append(f'<div style="position:absolute;left:{x}%;bottom:196px;width:48px;height:48px;'
+                   f'z-index:6;background:rgba(0,0,0,.35);border:2px solid {a}">{tre}</div>')
+    # pressure gauge
+    out.append(f'<div style="position:absolute;left:44%;bottom:224px;width:44px;height:44px;'
+               f'border:3px solid {a};border-radius:50%;z-index:6;background:rgba(0,0,0,.4)">'
+               f'<div style="position:absolute;left:50%;bottom:50%;width:2px;height:15px;background:{a};'
+               f'transform-origin:bottom center;transform:rotate(38deg)"></div></div>')
+    out.append(_label("2%", 252, "BSL-4 &mdash; POSITIVE PRESSURE", a))
+    return "".join(out)
+
+
+def props_xeno(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # main containment pod
+    tentacles = "".join(
+        f'<div style="position:absolute;bottom:14px;left:{18+j*17}px;width:7px;'
+        f'height:{rng.randint(40,86)}px;background:{a};opacity:.55;border-radius:4px;'
+        f'transform-origin:bottom center;animation:writhe {2.2+j*0.5:.1f}s ease-in-out infinite"></div>'
+        for j in range(4))
+    out.append(
+        f'<div style="position:absolute;left:50%;margin-left:-70px;bottom:40px;width:140px;height:190px;'
+        f'border-radius:70px 70px 8px 8px;border:4px solid {a};z-index:5;overflow:hidden;'
+        f'background:linear-gradient(180deg,rgba(79,255,176,.30),rgba(79,255,176,.08));'
+        f'box-shadow:0 0 50px {a}66">{tentacles}</div>')
+    # specimen jars
+    for k in range(6):
+        x = 4 + k * 7.5
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:44px;width:44px;height:60px;'
+            f'border:2px solid {a};border-radius:5px;background:rgba(79,255,176,.13);z-index:4">'
+            f'<div style="position:absolute;bottom:{rng.randint(6,20)}px;left:{rng.randint(6,20)}px;'
+            f'width:{rng.randint(9,17)}px;height:{rng.randint(9,17)}px;border-radius:50% 20% 50% 20%;'
+            f'background:{a};opacity:.6"></div></div>')
+    # skeleton on the wall
+    out.append(f'<div style="position:absolute;left:80%;bottom:118px;width:14px;height:60px;'
+               f'background:#cfe8dc;opacity:.35;z-index:4"></div>'
+               + "".join(f'<div style="position:absolute;left:{76+ (0 if j%2 else 6)}%;'
+                         f'bottom:{124+j*11}px;width:52px;height:4px;background:#cfe8dc;opacity:.3;'
+                         f'z-index:4"></div>' for j in range(5))
+               + f'<div style="position:absolute;left:79%;bottom:180px;width:30px;height:26px;'
+                 f'border-radius:50% 50% 40% 40%;background:#cfe8dc;opacity:.35;z-index:4"></div>')
+    # rotating warning light
+    out.append(f'<div style="position:absolute;left:50%;margin-left:-14px;bottom:236px;width:28px;'
+               f'height:16px;border-radius:14px 14px 0 0;background:{MAGENTA};z-index:6;'
+               f'animation:warn 1.1s ease-in-out infinite"></div>')
+    out.append(_label("2%", 252, "XENOBIOLOGY &mdash; SAMPLE 9 IS AWAKE", a))
+    return "".join(out)
+
+
+def props_glass(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # sinks
+    for k in range(3):
+        x = 4 + k * 20
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:40px;width:170px;height:58px;'
+            f'background:#39405f;border:3px solid #6b7a8a;border-radius:4px;z-index:4"></div>'
+            f'<div style="position:absolute;left:calc({x}% + 74px);bottom:98px;width:9px;height:38px;'
+            f'background:#8a97ab;z-index:4"></div>'
+            f'<div style="position:absolute;left:calc({x}% + 52px);bottom:130px;width:44px;height:9px;'
+            f'background:#8a97ab;border-radius:4px;z-index:4"></div>')
+    # drying rack with glassware
+    out.append(f'<div style="position:absolute;left:66%;bottom:40px;width:210px;height:180px;'
+               f'border:3px solid #6b7a8a;background:rgba(255,255,255,.05);z-index:4"></div>')
+    for tier in range(3):
+        for k in range(5):
+            out.append(beaker(f"calc(67% + {k*38}px)", 52 + tier * 58,
+                              rng.choice(["rgba(159,184,216,.5)", "rgba(63,242,224,.35)"]), 22, 30))
+        out.append(f'<div style="position:absolute;left:66%;width:210px;bottom:{46+tier*58}px;'
+                   f'height:4px;background:#6b7a8a;z-index:5"></div>')
+    # autoclave
+    out.append(f'<div style="position:absolute;left:44%;bottom:40px;width:96px;height:120px;'
+               f'background:#4a5568;border:3px solid #8a97ab;border-radius:4px;z-index:4">'
+               f'<div style="position:absolute;top:22px;left:50%;margin-left:-30px;width:60px;height:60px;'
+               f'border-radius:50%;border:4px solid #8a97ab;background:#2a3040"></div></div>')
+    # steam
+    for k in range(7):
+        out.append(f'<div style="position:absolute;left:{rng.randint(4,90)}%;bottom:100px;'
+                   f'width:{rng.randint(30,60)}px;height:{rng.randint(30,60)}px;border-radius:50%;'
+                   f'background:rgba(255,255,255,.13);z-index:6;'
+                   f'animation:billow {rng.uniform(2.6,4.4):.1f}s ease-out {rng.uniform(0,2):.1f}s infinite"></div>')
+    out.append(_label("2%", 234, "GLASSWASH &mdash; STILL WET", a))
+    return "".join(out)
+
+
+def props_lobby(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    out.append(f'<div style="position:absolute;left:2%;right:2%;bottom:96px;height:9px;'
+               f'background:#2b3358;border-top:2px solid #4a5580;z-index:3"></div>')
+    kit = [beaker("4%", 105, "#5be36a"), flask("9%", 105, "#ff3d8b"),
+           microscope("14%", 105, a), rack("20%", 105, "#3ff2e0", 6),
+           bunsen("27%", 105), monitor("32%", 105, "#5be36a"),
+           beaker("39%", 105, "#ffb627", 20, 26), flask("44%", 105, "#8fd14f"),
+           rack("50%", 105, "#ff3d8b", 5), microscope("58%", 105, "#3ff2e0"),
+           beaker("64%", 105, "#c86bff", 18, 24), monitor("70%", 105, "#3ff2e0"),
+           flask("78%", 105, "#ffb627"), rack("84%", 105, "#8fd14f", 6),
+           beaker("92%", 105, "#57b6ff", 19, 25)]
+    out.extend(kit)
+    # whiteboard with scrawl
+    out.append(f'<div style="position:absolute;left:6%;bottom:150px;width:220px;height:90px;'
+               f'background:#e8ecf5;opacity:.14;border:2px solid #6b7a8a;z-index:4"></div>')
+    for k in range(5):
+        out.append(f'<div style="position:absolute;left:{7+ (k%2)*2}%;bottom:{160+k*15}px;'
+                   f'width:{rng.randint(70,180)}px;height:3px;background:{a};opacity:.35;z-index:5"></div>')
+    # coffee machine
+    out.append(f'<div style="position:absolute;left:88%;bottom:150px;width:56px;height:70px;'
+               f'background:#3a4258;border:2px solid #6b7a8a;border-radius:3px;z-index:4">'
+               f'<div style="position:absolute;bottom:8px;left:14px;width:26px;height:18px;'
+               f'background:#7a4a2a;border-radius:2px"></div></div>')
+    out.append(_label("2%", 244, "MAIN LAB", a))
+    return "".join(out)
+
+
+PROP_BUILDERS = {
+    "viv": props_vivarium, "fly": props_fly, "aqua": props_aquatics,
+    "radio": props_radio, "cryo": props_cryo, "bsl4": props_bsl4,
+    "xeno": props_xeno, "glass": props_glass, "lobby": props_lobby,
+    "suite3": props_bsl4,
+}
+
+
+def prop_wall(room: Room, seed: int) -> str:
+    rng = random.Random(seed)
+    return PROP_BUILDERS.get(room.key, props_lobby)(room, rng)
+
+
+EXTRA_KEYFRAMES = """
+<style>
+ @keyframes needle { from{transform:rotate(-32deg)} to{transform:rotate(34deg)} }
+ @keyframes warn { 0%,100%{opacity:.35;box-shadow:0 0 0 rgba(255,61,139,0)}
+                   50%{opacity:1;box-shadow:0 0 26px #ff3d8b} }
+ @keyframes wave { from{transform:translateX(0)} to{transform:translateX(-40px)} }
+ @keyframes gull { from{transform:translateX(0) translateY(0)} to{transform:translateX(120px) translateY(-14px)} }
+ @keyframes vine { 0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(4deg)} }
+</style>
+"""
+
+
+def ocean_window(left: str, top: int, w: int, h: int) -> str:
+    """A window onto the sea. The one nice thing about this building."""
+    waves = "".join(
+        f'<div style="position:absolute;left:-40px;right:-40px;top:{int(h*0.52)+k*7}px;height:3px;'
+        f'background:rgba(255,255,255,.35);border-radius:2px;'
+        f'animation:wave {2.2+k*0.5:.1f}s linear infinite"></div>' for k in range(5))
+    gulls = "".join(
+        f'<div style="position:absolute;left:{14+k*30}px;top:{16+k*9}px;width:12px;height:5px;z-index:3;'
+        f'border-top:2px solid rgba(255,255,255,.75);border-radius:50%;'
+        f'animation:gull {5+k*1.4:.1f}s linear infinite"></div>' for k in range(3))
+    return (
+        f'<div style="position:absolute;left:{left};top:{top}px;width:{w}px;height:{h}px;z-index:2;'
+        f'border:6px solid #4a5580;border-radius:4px;overflow:hidden;'
+        f'background:linear-gradient(180deg,#7fd4ff 0%,#bfe9ff 42%,#2b8fc4 42%,#0d5f92 100%);'
+        f'box-shadow:inset 0 0 30px rgba(0,0,0,.35)">'
+        f'<div style="position:absolute;right:16px;top:12px;width:26px;height:26px;border-radius:50%;'
+        f'background:#fff3b0;box-shadow:0 0 24px #fff3b0"></div>'
+        f'{gulls}{waves}'
+        f'<div style="position:absolute;left:50%;top:{int(h*0.52)-7}px;margin-left:-16px;width:32px;'
+        f'height:9px;background:#20364a;border-radius:2px 6px 0 0"></div>'
+        f'<div style="position:absolute;left:0;right:0;top:50%;height:4px;background:#4a5580"></div>'
+        f'<div style="position:absolute;left:50%;top:0;bottom:0;width:4px;margin-left:-2px;background:#4a5580"></div>'
+        f'</div>')
 
 
 def critters(room: Room, seed: int, n: int = 7) -> str:
@@ -742,98 +1062,296 @@ def fuge_sprite(zone: Zone, state: str, lid_open: bool, idx: int, width: int = 1
         f"</div>")
 
 
+# ==========================================================================
+# PLAYFIELD BACKGROUND — a real room behind the rotor while you play
+# ==========================================================================
+def room_svg_background(room: Room, w: int = 1600, h: int = 900) -> str:
+    """Flat SVG of the room, used as the page background during play."""
+    rng = random.Random(len(room.key) * 7 + 3)
+    a, wt, wb = room.accent, room.wall_top, room.wall_bot
+    fa, fb = room.floor_a, room.floor_b
+    p = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">',
+         f'<defs><linearGradient id="w" x1="0" y1="0" x2="0" y2="1">'
+         f'<stop offset="0" stop-color="{wt}"/><stop offset="1" stop-color="{wb}"/></linearGradient></defs>',
+         f'<rect width="{w}" height="{h}" fill="url(#w)"/>']
+    # ceiling strip lights
+    for x in (110, 620, 1130):
+        p.append(f'<rect x="{x}" y="26" width="380" height="12" fill="{a}" opacity="0.30"/>')
+    floor_y = h - 210
+    p.append(f'<rect y="{floor_y}" width="{w}" height="210" fill="{fa}"/>')
+    for x in range(0, w, 150):
+        p.append(f'<rect x="{x}" y="{floor_y}" width="75" height="210" fill="{fb}"/>')
+    p.append(f'<rect y="{floor_y}" width="{w}" height="4" fill="{a}" opacity="0.35"/>')
+
+    k = room.key
+    if k == "viv":
+        for cx in (70, 330, 1180, 1420):
+            for tier in range(3):
+                y = floor_y - 90 - tier * 96
+                p.append(f'<rect x="{cx}" y="{y}" width="230" height="86" fill="none" '
+                         f'stroke="#8d9a7a" stroke-width="5"/>')
+                for j in range(9):
+                    p.append(f'<line x1="{cx+16+j*24}" y1="{y}" x2="{cx+16+j*24}" y2="{y+86}" '
+                             f'stroke="#8d9a7a" stroke-width="3" opacity="0.8"/>')
+                for mnum in range(rng.randint(1, 3)):
+                    mx = cx + 30 + mnum * 70
+                    p.append(f'<ellipse cx="{mx}" cy="{y+70}" rx="15" ry="8" fill="#e6dfd4" opacity="0.9"/>')
+        p.append(f'<rect x="640" y="{floor_y-300}" width="330" height="300" fill="none" '
+                 f'stroke="#8d9a7a" stroke-width="7"/>')
+        for j in range(11):
+            p.append(f'<line x1="{656+j*30}" y1="{floor_y-300}" x2="{656+j*30}" y2="{floor_y}" '
+                     f'stroke="#8d9a7a" stroke-width="4" opacity="0.75"/>')
+        p.append(f'<line x1="660" y1="{floor_y-250}" x2="950" y2="{floor_y-250}" '
+                 f'stroke="#7a5c3a" stroke-width="7"/>')
+    elif k == "fly":
+        for tier in range(4):
+            y = floor_y - 70 - tier * 96
+            p.append(f'<rect y="{y+64}" width="{w}" height="10" fill="#5a4a2a"/>')
+            for j in range(28):
+                x = 20 + j * 56
+                p.append(f'<rect x="{x}" y="{y}" width="34" height="64" fill="{a}" opacity="0.16" '
+                         f'stroke="{a}" stroke-width="2"/>')
+                p.append(f'<rect x="{x}" y="{y+46}" width="34" height="18" fill="#8a5a1a" opacity="0.85"/>')
+    elif k == "aqua":
+        for tier in range(3):
+            y = floor_y - 96 - tier * 110
+            for j in range(7):
+                x = 20 + j * 228
+                p.append(f'<rect x="{x}" y="{y}" width="210" height="96" fill="{a}" opacity="0.20" '
+                         f'stroke="{a}" stroke-width="4"/>')
+                for f in range(rng.randint(2, 5)):
+                    p.append(f'<ellipse cx="{x+30+f*40}" cy="{y+26+f*13}" rx="13" ry="5" '
+                             f'fill="{a}" opacity="0.75"/>')
+        p.append(f'<rect y="{floor_y-330}" width="{w}" height="12" fill="#4a6b78"/>')
+    elif k == "radio":
+        for row in range(6):
+            for j in range(14):
+                x = j * 120 + (60 if row % 2 else 0)
+                p.append(f'<rect x="{x}" y="{floor_y-40-row*44}" width="112" height="38" '
+                         f'fill="#4a4a52" stroke="#62626e" stroke-width="2"/>')
+        for j in range(5):
+            x = 1000 + j * 120
+            p.append(f'<rect x="{x}" y="{floor_y-150}" width="86" height="150" fill="#54520e" '
+                     f'stroke="{a}" stroke-width="5" rx="6"/>')
+            p.append(f'<circle cx="{x+43}" cy="{floor_y-90}" r="30" fill="none" stroke="{a}" stroke-width="7"/>')
+        p.append(f'<rect y="{floor_y-330}" width="{w}" height="26" fill="{a}" opacity="0.5"/>')
+    elif k == "cryo":
+        for j in range(8):
+            x = 40 + j * 195
+            p.append(f'<rect x="{x}" y="{floor_y-170}" width="150" height="170" fill="#dfeef7" '
+                     f'opacity="0.22" stroke="{a}" stroke-width="4" rx="14"/>')
+            p.append(f'<ellipse cx="{x+75}" cy="{floor_y-180}" rx="86" ry="26" fill="#fff" opacity="0.16"/>')
+        p.append(f'<rect y="{floor_y-300}" width="{w}" height="10" fill="#8fb8cc" opacity="0.5"/>')
+        for _ in range(60):
+            p.append(f'<circle cx="{rng.randint(0,w)}" cy="{rng.randint(0,h)}" r="{rng.randint(2,5)}" '
+                     f'fill="#fff" opacity="0.16"/>')
+    elif k in ("bsl4", "suite3"):
+        p.append(f'<rect x="{w//2-190}" y="{floor_y-330}" width="380" height="330" fill="none" '
+                 f'stroke="{a}" stroke-width="9" rx="14"/>')
+        p.append(f'<circle cx="{w//2}" cy="{floor_y-200}" r="86" fill="{a}" opacity="0.12" '
+                 f'stroke="{a}" stroke-width="7"/>')
+        for x in (110, 260, 1220, 1380):
+            p.append(f'<rect x="{x}" y="{floor_y-230}" width="96" height="230" fill="#e8e6f0" '
+                     f'opacity="0.16" rx="46"/>')
+            p.append(f'<circle cx="{x+48}" cy="{floor_y-190}" r="26" fill="{a}" opacity="0.30"/>')
+        for x in (520, 1000):
+            p.append(f'<rect x="{x}" y="{floor_y-400}" width="90" height="90" fill="none" '
+                     f'stroke="{a}" stroke-width="5"/>')
+            for j in range(3):
+                ang = j * 120
+                p.append(f'<circle cx="{x+45}" cy="{floor_y-355}" r="17" fill="none" stroke="{a}" '
+                         f'stroke-width="7" transform="rotate({ang} {x+45} {floor_y-355})" '
+                         f'stroke-dasharray="18 90"/>')
+    elif k == "xeno":
+        p.append(f'<rect x="{w//2-130}" y="{floor_y-360}" width="260" height="360" rx="130" '
+                 f'fill="{a}" opacity="0.16" stroke="{a}" stroke-width="7"/>')
+        for j in range(4):
+            p.append(f'<rect x="{w//2-90+j*46}" y="{floor_y-140}" width="14" height="140" '
+                     f'fill="{a}" opacity="0.45" rx="7"/>')
+        for j in range(9):
+            x = 60 + j * 160
+            if abs(x - w // 2) < 200:
+                continue
+            p.append(f'<rect x="{x}" y="{floor_y-120}" width="86" height="120" fill="{a}" opacity="0.12" '
+                     f'stroke="{a}" stroke-width="3" rx="6"/>')
+            p.append(f'<circle cx="{x+43}" cy="{floor_y-56}" r="{rng.randint(12,24)}" fill="{a}" opacity="0.45"/>')
+    elif k == "glass":
+        for j in range(4):
+            x = 40 + j * 250
+            p.append(f'<rect x="{x}" y="{floor_y-120}" width="210" height="120" fill="#39405f" '
+                     f'stroke="#6b7a8a" stroke-width="5" rx="5"/>')
+            p.append(f'<rect x="{x+95}" y="{floor_y-200}" width="12" height="80" fill="#8a97ab"/>')
+        for tier in range(3):
+            y = floor_y - 150 - tier * 96
+            p.append(f'<rect x="1080" y="{y+70}" width="470" height="8" fill="#6b7a8a"/>')
+            for j in range(8):
+                p.append(f'<rect x="{1096+j*56}" y="{y+26}" width="36" height="46" fill="#9fb8d8" '
+                         f'opacity="0.28" stroke="#9fb8d8" stroke-width="2"/>')
+    else:
+        p.append(f'<rect y="{floor_y-120}" width="{w}" height="14" fill="#2b3358"/>')
+        for j in range(16):
+            x = 30 + j * 100
+            p.append(f'<rect x="{x}" y="{floor_y-190}" width="44" height="70" fill="{a}" opacity="0.20" '
+                     f'stroke="{a}" stroke-width="2" rx="4"/>')
+        p.append(f'<rect x="120" y="{floor_y-380}" width="330" height="170" fill="#e8ecf5" opacity="0.10" '
+                 f'stroke="#6b7a8a" stroke-width="4"/>')
+    p.append("</svg>")
+    return "".join(p)
+
+
+@st.cache_data(show_spinner=False)
+def room_background_css(room_key: str) -> str:
+    room = next((r for r in ALL_ROOMS if r.key == room_key), LOBBY)
+    svg = room_svg_background(room)
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"""
+<style>
+.stApp {{
+  background-image:
+    linear-gradient(180deg, rgba(6,7,13,0.72) 0%, rgba(6,7,13,0.84) 55%, rgba(6,7,13,0.93) 100%),
+    url("data:image/svg+xml;base64,{b64}");
+  background-size: cover;
+  background-position: center 20%;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}}
+</style>
+"""
+
+
+FLICKER_CSS = """
+<style>
+@keyframes powercut { 0%,86%,100%{opacity:1} 88%{opacity:.28} 90%{opacity:1} 92%{opacity:.15} 94%{opacity:1} }
+.block-container { animation: powercut 4.5s steps(1) infinite; }
+</style>
+"""
+
+
+# ==========================================================================
+# TITLE + TRANSIT
+# ==========================================================================
 def scene_attract(seed: int) -> str:
     r = LOBBY
     rng = random.Random(seed)
     bench = "".join([
-        beaker("4%", 74, "#5be36a"), beaker("7%", 74, "#3ff2e0", 13, 16),
-        flask("11%", 74, "#ff3d8b"), microscope("16%", 74, "#ffb627"),
-        rack("22%", 74, "#3ff2e0", 6), bunsen("29%", 74),
-        beaker("33%", 74, "#ffb627", 18, 23), flask("37%", 74, "#8fd14f"),
-        monitor("42%", 74, "#5be36a"), rack("49%", 74, "#ff3d8b", 5),
-        beaker("56%", 74, "#c86bff", 15, 19), microscope("60%", 74, "#3ff2e0"),
-        flask("66%", 74, "#ffb627"), bunsen("71%", 74),
-        rack("75%", 74, "#8fd14f", 6), beaker("82%", 74, "#57b6ff", 17, 21),
-        monitor("86%", 74, "#3ff2e0"), flask("92%", 74, "#5be36a"),
+        beaker("3%", 74, "#5be36a"), beaker("6%", 74, "#3ff2e0", 13, 16),
+        flask("9%", 74, "#ff3d8b"), microscope("13%", 74, "#ffb627"),
+        rack("18%", 74, "#3ff2e0", 6), bunsen("25%", 74),
+        beaker("29%", 74, "#ffb627", 18, 23), flask("33%", 74, "#8fd14f"),
+        monitor("37%", 74, "#5be36a"), rack("44%", 74, "#ff3d8b", 5),
+        beaker("51%", 74, "#c86bff", 15, 19), microscope("55%", 74, "#3ff2e0"),
+        flask("60%", 74, "#ffb627"), bunsen("65%", 74),
+        rack("69%", 74, "#8fd14f", 6), beaker("76%", 74, "#57b6ff", 17, 21),
+        monitor("80%", 74, "#3ff2e0"), flask("86%", 74, "#5be36a"),
+        beaker("90%", 74, "#ff3d8b", 16, 20), microscope("94%", 74, "#8fd14f"),
     ])
     fuges = "".join(
         f'<div style="position:absolute;left:{x}%;bottom:36px;z-index:5">'
         f'{fuge_sprite(z, "active" if i == 2 else "todo", False, i, 96)}</div>'
-        for i, (x, z) in enumerate([(3, TEACHING), (18, CORE), (34, TEACHING),
-                                    (52, COLD), (68, PREP), (84, CORE)]))
-    monkeys = critters(VIVARIUM, seed + 1, 4)
+        for i, (x, z) in enumerate([(2, TEACHING), (16, CORE), (31, TEACHING),
+                                    (60, COLD), (75, PREP), (89, CORE)]))
+    # monkeys on a rope, clearly monkeys
+    rope = ('<div style="position:absolute;left:0;right:0;top:96px;height:4px;background:#7a5c3a;'
+            'z-index:6;box-shadow:0 1px 0 #5a4228"></div>')
+    monkeys = "".join(
+        f'<div style="position:absolute;left:{8+k*23}%;top:96px;z-index:7;transform-origin:top center;'
+        f'animation:vine {2.4+k*0.6:.1f}s ease-in-out {k*0.4:.1f}s infinite">'
+        f'<div style="width:4px;height:{16+k*4}px;background:#8a6240;margin:0 auto"></div>'
+        f'<div style="width:22px;height:18px;background:#8a6240;border-radius:50% 50% 42% 42%;position:relative">'
+        f'<div style="position:absolute;top:3px;left:3px;width:16px;height:12px;background:#d9b18a;'
+        f'border-radius:50%"></div>'
+        f'<div style="position:absolute;top:4px;left:5px;width:3px;height:3px;background:#2a1d12;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:4px;right:5px;width:3px;height:3px;background:#2a1d12;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:-3px;left:-4px;width:8px;height:8px;background:#8a6240;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:-3px;right:-4px;width:8px;height:8px;background:#8a6240;border-radius:50%"></div>'
+        f'</div>'
+        f'<div style="width:14px;height:18px;background:#8a6240;border-radius:6px;margin:0 auto"></div>'
+        f'<div style="width:22px;height:4px;background:#8a6240;border-radius:3px;margin:-14px 0 0 14px;'
+        f'transform:rotate(28deg)"></div></div>' for k in range(4))
     roaches = critters(LOBBY, seed + 2, 3)
     inner = f"""
-    {CRITTER_KEYFRAMES}
+    {CRITTER_KEYFRAMES}{EXTRA_KEYFRAMES}
     <style>
       @keyframes glowpulse {{ 0%,100%{{text-shadow:0 0 12px #ffb627,0 0 34px rgba(255,182,39,.5)}}
                               50%{{text-shadow:0 0 24px #ffb627,0 0 62px rgba(255,182,39,.9)}} }}
       @keyframes blink {{ 0%,49%{{opacity:1}} 50%,100%{{opacity:0}} }}
       @keyframes idle {{ 50%{{transform:translateY(-4px)}} }}
-      @keyframes sway {{ 0%,100%{{transform:rotate(-3deg)}} 50%{{transform:rotate(3deg)}} }}
-      .logo {{ position:absolute; top:24px; left:0; right:0; text-align:center; z-index:15;
+      .logo {{ position:absolute; top:150px; left:0; right:0; text-align:center; z-index:15;
                font-family:'Press Start 2P',monospace; color:#ffb627; animation:glowpulse 2.6s ease-in-out infinite; }}
-      .logo .l1 {{ font-size:38px; display:block; letter-spacing:3px; }}
-      .logo .l2 {{ font-size:38px; display:block; letter-spacing:3px; margin-top:12px; color:#3ff2e0;
+      .logo .l1 {{ font-size:40px; display:block; letter-spacing:3px; }}
+      .logo .l2 {{ font-size:40px; display:block; letter-spacing:3px; margin-top:13px; color:#3ff2e0;
                    text-shadow:0 0 14px #3ff2e0,0 0 36px rgba(63,242,224,.55); }}
-      .tag {{ position:absolute; top:130px; left:0; right:0; text-align:center; z-index:15;
-              font-family:'IBM Plex Mono',monospace; font-size:13px; color:#8fa0d8; letter-spacing:.44em; }}
-      .ins {{ position:absolute; bottom:96px; left:0; right:0; text-align:center; z-index:15;
+      .tag {{ position:absolute; top:262px; left:0; right:0; text-align:center; z-index:15;
+              font-family:'IBM Plex Mono',monospace; font-size:14px; color:#8fa0d8; letter-spacing:.46em; }}
+      .ins {{ position:absolute; bottom:112px; left:0; right:0; text-align:center; z-index:15;
               font-family:'Press Start 2P',monospace; font-size:11px; color:#5be36a;
               animation:blink 1.1s steps(1) infinite; }}
       .by {{ position:absolute; bottom:8px; right:12px; z-index:22; font-family:'Press Start 2P',monospace;
-             font-size:8px; color:#5a6486; letter-spacing:.14em; }}
+             font-size:9px; color:#5a6486; letter-spacing:.14em; }}
       .by b {{ color:#ffb627; }}
-      .sci {{ position:absolute; bottom:44px; left:44%; width:36px; z-index:8; animation:idle 2.3s ease-in-out infinite; }}
-      .banner {{ position:absolute; top:150px; left:50%; margin-left:-92px; width:184px; z-index:6;
-                 border:2px dashed rgba(255,255,255,.16); padding:5px; text-align:center;
-                 font-size:9px; color:#5a6486; letter-spacing:.16em; animation:sway 5s ease-in-out infinite; }}
+      .sci {{ position:absolute; bottom:44px; left:47%; width:36px; z-index:8; animation:idle 2.3s ease-in-out infinite; }}
+      .board {{ position:absolute; top:130px; left:3%; width:190px; height:96px; z-index:2;
+                background:rgba(232,236,245,.10); border:3px solid #6b7a8a; }}
     </style>
-    <div class="lamp" style="left:4%;width:26%"></div>
-    <div class="lamp" style="left:36%;width:26%"></div>
-    <div class="lamp" style="left:68%;width:26%"></div>
-    <div class="shelf" style="top:58px;left:3%;width:30%"></div>
-    <div class="shelf" style="top:58px;left:66%;width:31%"></div>
-    <div style="position:absolute;left:3%;right:3%;bottom:66px;height:8px;background:#2b3358;
+    <div class="lamp" style="left:3%;width:28%"></div>
+    <div class="lamp" style="left:36%;width:28%"></div>
+    <div class="lamp" style="left:69%;width:28%"></div>
+    {ocean_window("36%", 118, 240, 150)}
+    {ocean_window("62%", 118, 190, 150)}
+    <div class="board"></div>
+    <div class="shelf" style="top:250px;left:2%;width:26%"></div>
+    <div class="shelf" style="top:250px;left:76%;width:22%"></div>
+    <div style="position:absolute;left:2%;right:2%;bottom:66px;height:9px;background:#2b3358;
                 border-top:2px solid #4a5580;z-index:3"></div>
-    {bench}{fuges}{monkeys}{roaches}
+    {bench}{fuges}{rope}{monkeys}{roaches}
     <div class="sci"><div class="head"><div class="goggles"></div></div><div class="coat"></div><div class="legs"></div></div>
-    <div class="banner">SAFETY RECORD:<br>0 DAYS</div>
     <div class="logo"><span class="l1">CENTRIFUGE</span><span class="l2">CHESS</span></div>
     <div class="tag">BALANCE OR BURN</div>
     <div class="ins">&#9654; INSERT SAMPLE TO START</div>
     <div class="by">MADE BY <b>DYLAN</b></div>
     """
-    return scene_shell(430, r, inner)
+    return scene_shell(470, r, inner)
 
 
 def scene_transit(room: Room, zone: Zone, level_idx: int, seed: int) -> str:
-    """Scientist crosses a themed room and arrives at the next machine."""
+    """Scientist crosses a themed room. Slow enough to actually look at."""
     inner = f"""
-    {CRITTER_KEYFRAMES}
+    {CRITTER_KEYFRAMES}{EXTRA_KEYFRAMES}
     <style>
-      @keyframes cross {{ from{{left:-6%}} to{{left:74%}} }}
-      @keyframes arrive {{ 0%,72%{{opacity:0;transform:translateX(28px)}} 100%{{opacity:1;transform:translateX(0)}} }}
+      @keyframes cross {{ 0%{{left:-7%}} 12%{{left:4%}} 40%{{left:30%}} 58%{{left:40%}}
+                          70%{{left:52%}} 100%{{left:76%}} }}
+      @keyframes arrive {{ 0%,66%{{opacity:0;transform:translateX(40px)}} 100%{{opacity:1;transform:translateX(0)}} }}
+      @keyframes cardin {{ 0%{{opacity:0;transform:translateY(-16px)}} 14%{{opacity:1;transform:translateY(0)}}
+                           78%{{opacity:1}} 100%{{opacity:0}} }}
       @keyframes fadein {{ to{{opacity:1}} }}
-      .sci {{ position:absolute; bottom:40px; width:36px; z-index:9;
-              animation:cross 2.0s cubic-bezier(.45,0,.3,1) forwards, bob .2s steps(2) infinite; }}
-      .target {{ position:absolute; right:5%; bottom:36px; z-index:8; animation:arrive 2.4s ease-out forwards; }}
-      .cap3 {{ opacity:0; animation:fadein .45s ease-out 1.3s forwards; }}
-      .door {{ position:absolute; left:2%; bottom:36px; width:52px; height:96px; z-index:3;
-               border:3px solid {room.accent}; border-bottom:none; border-radius:4px 4px 0 0;
-               background:rgba(0,0,0,.4); }}
+      .sci {{ position:absolute; bottom:40px; width:36px; z-index:11;
+              animation:cross 4.0s cubic-bezier(.4,0,.5,1) forwards, bob .22s steps(2) infinite; }}
+      .target {{ position:absolute; right:4%; bottom:36px; z-index:10; animation:arrive 4.2s ease-out forwards; }}
+      .cap3 {{ opacity:0; animation:fadein .5s ease-out 3.0s forwards; }}
+      .card {{ position:absolute; top:40%; left:0; right:0; text-align:center; z-index:18;
+               animation:cardin 3.0s ease-out forwards; }}
+      .card b {{ font-family:'Press Start 2P',monospace; font-size:21px; color:{room.accent};
+                 text-shadow:0 0 22px {room.accent}; display:block; }}
+      .card i {{ font-family:'IBM Plex Mono',monospace; font-style:normal; font-size:12px;
+                 color:#c9d2e8; letter-spacing:.28em; display:block; margin-top:12px; }}
+      .door {{ position:absolute; left:1%; bottom:36px; width:58px; height:120px; z-index:6;
+               border:4px solid {room.accent}; border-bottom:none; border-radius:5px 5px 0 0;
+               background:rgba(0,0,0,.45); }}
+      .dim {{ position:absolute; inset:0; z-index:17; background:rgba(0,0,0,.42);
+              animation:cardin 3.0s ease-out forwards; }}
     </style>
     {prop_wall(room, seed)}
-    <div class="lamp" style="left:5%;width:40%"></div>
-    <div class="lamp" style="left:52%;width:40%"></div>
+    <div class="lamp" style="left:4%;width:44%"></div>
+    <div class="lamp" style="left:52%;width:44%"></div>
     <div class="door"></div>
-    <div class="sign" style="left:2%;top:14px">{room.name}<br><span style="opacity:.6">{room.sign}</span></div>
-    {critters(room, seed, 8)}
+    {critters(room, seed, 11)}
     <div class="sci"><div class="head"><div class="goggles"></div></div><div class="coat"></div><div class="legs"></div></div>
-    <div class="target">{fuge_sprite(zone, "active", True, level_idx, 120)}</div>
-    <div class="caption cap3">LEVEL {level_idx+1} &mdash; {zone.name}</div>
+    <div class="target">{fuge_sprite(zone, "active", True, level_idx, 130)}</div>
+    <div class="dim"></div>
+    <div class="card"><b>{room.name}</b><i>{room.sign}</i></div>
+    <div class="caption cap3">LEVEL {level_idx+1} &mdash; {zone.name} &mdash; {room.name}</div>
     """
-    return scene_shell(280, room, inner)
+    return scene_shell(340, room, inner)
 
 
 def scene_spin(zone: Zone, room: Room, n: int) -> str:
@@ -1142,11 +1660,18 @@ def rotor_figure(spec: LevelSpec, room: Room, base, player, blocked: Set[int],
         showlegend=False))
 
     ann = []
-    lab_size = 11 if n <= 24 else (9 if n <= 36 else 8)
-    for i in range(n):
-        lx, ly = slot_xy(i, n, 1.345)
-        ann.append(dict(x=lx, y=ly, text=str(i), showarrow=False,
-                        font=dict(family="IBM Plex Mono, monospace", size=lab_size, color=DIM)))
+    if not spec.hide_labels:
+        lab_size = 11 if n <= 24 else (9 if n <= 36 else 8)
+        for i in range(n):
+            lx, ly = slot_xy(i, n, 1.345)
+            ann.append(dict(x=lx, y=ly, text=str(i), showarrow=False,
+                            font=dict(family="IBM Plex Mono, monospace", size=lab_size, color=DIM)))
+    else:
+        for i in range(0, n, max(1, n // 4)):            # keep a few frost-free marks
+            lx, ly = slot_xy(i, n, 1.345)
+            ann.append(dict(x=lx, y=ly, text="\u2744", showarrow=False,
+                            font=dict(family="IBM Plex Mono, monospace", size=12,
+                                      color=_hex_rgba(room.accent, 0.55))))
 
     if show_needle:
         vx, vy = imbalance_vector(loads)
@@ -1316,7 +1841,8 @@ def finish_run(reason: str, burned: bool):
 # ==========================================================================
 def screen_title():
     ss = st.session_state
-    components.html(scene_attract(ss.seed), height=444)
+    st.markdown(room_background_css("lobby"), unsafe_allow_html=True)
+    components.html(scene_attract(ss.seed), height=484)
 
     c1, c2, c3, c4 = st.columns([2, 1.3, 1.3, 1.3])
     with c1:
@@ -1372,8 +1898,9 @@ def screen_intro():
     room = room_for(ss.level)
     st.markdown(f'<div class="cc-strip">{room.name} &nbsp;&middot;&nbsp; {spec.name} '
                 f'&nbsp;&middot;&nbsp; {spec.subtitle}</div>', unsafe_allow_html=True)
-    components.html(scene_transit(room, spec.zone, ss.level, ss.seed + ss.level), height=294)
-    time.sleep(2.5)
+    st.markdown(room_background_css(room.key), unsafe_allow_html=True)
+    components.html(scene_transit(room, spec.zone, ss.level, ss.seed + ss.level), height=356)
+    time.sleep(4.3)
     ss.phase = "play"
     ss.level_start = time.time()
     st.rerun()
@@ -1383,8 +1910,9 @@ def screen_ultra_intro():
     ss = st.session_state
     st.markdown('<div class="cc-strip" style="color:#ff3d8b">&#9888; UNSCHEDULED RUN &#9888;</div>',
                 unsafe_allow_html=True)
+    st.markdown(room_background_css("suite3"), unsafe_allow_html=True)
     components.html(scene_ultra_alert(), height=294)
-    time.sleep(2.7)
+    time.sleep(3.0)
     ss.phase = "play"
     ss.level_start = time.time()
     st.rerun()
@@ -1415,7 +1943,7 @@ def screen_play():
     loads = combined(ss.base, ss.player)
     resid = imbalance(loads)
     tol = tolerance_for(spec)
-    blind = spec.time_limit > 0
+    blind = spec.sudden_death
     total = ss.total_to_place
     seated = total - len(ss.hand)
 
@@ -1423,17 +1951,23 @@ def screen_play():
         ss.last_result = ("timeout", resid, tol, 0, 0, 0)
         play("alarm"); ss.phase = "explode"; st.rerun()
 
+    st.markdown(room_background_css(room.key), unsafe_allow_html=True)
+    if spec.flicker:
+        st.markdown(FLICKER_CSS, unsafe_allow_html=True)
+
     header = (f'<div class="cc-strip" style="color:#ff3d8b">{spec.name} &nbsp;&middot;&nbsp; {spec.subtitle}</div>'
               if spec.sudden_death else
               f'<div class="cc-strip">{room.name} &nbsp;&middot;&nbsp; {spec.name} '
               f'&nbsp;&middot;&nbsp; {spec.subtitle}</div>')
     st.markdown(header, unsafe_allow_html=True)
+    if spec.gimmick:
+        st.markdown(f'<div class="cc-gimmick">&#9888; {spec.gimmick}</div>', unsafe_allow_html=True)
 
-    left, right = st.columns([1.35, 1], gap="medium")
-
-    with left:
+    # --- rotor, centred ---
+    _, mid, _ = st.columns([1, 2.1, 1])
+    with mid:
         fig = rotor_figure(spec, room, ss.base, ss.player, ss.blocked,
-                           show_needle=not blind, height=620)
+                           show_needle=not blind, height=560)
         event = st.plotly_chart(fig, key=f"rotor_{ss.nonce}", on_select="rerun",
                                 selection_mode="points",
                                 config={"displayModeBar": False}, **FIG)
@@ -1452,6 +1986,8 @@ def screen_play():
                 ss.nonce += 1
                 st.rerun()
 
+    # --- everything else, centred underneath ---
+    _, right, _ = st.columns([1, 2.1, 1])
     with right:
         hearts = ("&#9829;" * ss.lives +
                   '<span style="color:#333a58">&#9829;</span>' * (START_LIVES - ss.lives))
@@ -1486,7 +2022,9 @@ def screen_play():
         if ss.hand:
             if ss.pick >= len(ss.hand):
                 ss.pick = 0
-            cols = st.columns(len(ss.hand))
+            pad = max(0, (5 - len(ss.hand)) / 2)
+            cols = st.columns([pad] + [1] * len(ss.hand) + [pad]) if pad else st.columns(len(ss.hand))
+            cols = cols[1:-1] if pad else cols
             for j, c in enumerate(cols):
                 with c:
                     if st.button(f"{ss.hand[j]:g} g", key=f"tube_{ss.nonce}_{j}",
@@ -1555,6 +2093,7 @@ def screen_spin():
     tol = tolerance_for(spec)
 
     st.markdown('<div class="cc-strip">SPINNING UP</div>', unsafe_allow_html=True)
+    st.markdown(room_background_css(current_room().key), unsafe_allow_html=True)
     components.html(scene_spin(spec.zone, current_room(), spec.slots), height=294)
     time.sleep(2.0)
 
@@ -1606,36 +2145,42 @@ def screen_result():
     kind, resid, tol, acc, speed, pts = ss.last_result
 
     if kind in ("fail", "timeout"):
-        st.markdown('<div class="cc-strip" style="color:#ff3d8b">ROTOR DESTROYED</div>',
-                    unsafe_allow_html=True)
         why = ("The clock ran out with the chamber still open." if kind == "timeout"
                else f"Imbalance hit {resid:.3f} against a {tol:.3f} limit.")
-        st.markdown(
-            f'<div class="cc-panel"><p class="cc-readout">{why} '
-            f'You lost a life and {FAIL_PENALTY} points.<br><br>'
-            f'<span class="cc-amber">{ss.lives}</span> of {START_LIVES} lives left. '
-            f'A fresh rotor is being wheeled over.</p></div>', unsafe_allow_html=True)
-        c = st.columns([1, 2, 1])[1]
+        _, c, _ = st.columns([1, 1.7, 1])
         with c:
+            st.markdown('<div class="cc-centre">', unsafe_allow_html=True)
+            st.markdown('<div class="cc-strip" style="color:#ff3d8b;font-size:1.05rem">'
+                        'ROTOR DESTROYED</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="cc-panel"><p class="cc-readout" style="line-height:1.9">{why}<br>'
+                f'You lost a life and {FAIL_PENALTY} points.<br><br>'
+                f'<span class="cc-amber">{ss.lives}</span> of {START_LIVES} lives left. '
+                f'A fresh rotor is being wheeled over.</p></div>', unsafe_allow_html=True)
             if st.button("TAKE THE NEW ROTOR", type="primary", **BTN):
                 load_level(spec, keep_fails=True)
                 ss.phase = "play"
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
         return
 
     title = "SUITE 3 CLEARED" if spec.sudden_death else "CLEAN SPIN"
-    st.markdown(f'<div class="cc-strip" style="color:#5be36a">{title}</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="cc-panel"><div class="cc-hud">'
-        f'<div><span class="k">RESIDUAL</span>{resid:.3f}</div>'
-        f'<div><span class="k">ACCURACY</span>{acc}</div>'
-        f'<div><span class="k">{"BONUS" if spec.sudden_death else "SPEED"}</span>{speed}</div>'
-        f'<div><span class="k">ABORTS</span>-{FAIL_PENALTY*ss.fails}</div>'
-        f'<div><span class="k">LEVEL</span>{pts}</div>'
-        f'<div><span class="k">TOTAL</span>{sum(ss.scores)}</div>'
-        f'</div></div>', unsafe_allow_html=True)
+    _, c, _ = st.columns([1, 1.7, 1])
+    with c:
+        st.markdown('<div class="cc-centre">', unsafe_allow_html=True)
+        st.markdown(f'<div class="cc-strip" style="color:#5be36a;font-size:1.05rem">{title}</div>',
+                    unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="cc-panel"><div class="cc-hud">'
+            f'<div><span class="k">RESIDUAL</span>{resid:.3f}</div>'
+            f'<div><span class="k">ACCURACY</span>{acc}</div>'
+            f'<div><span class="k">{"BONUS" if spec.sudden_death else "SPEED"}</span>{speed}</div>'
+            f'<div><span class="k">ABORTS</span>-{FAIL_PENALTY*ss.fails}</div>'
+            f'<div><span class="k">LEVEL</span>{pts}</div>'
+            f'<div><span class="k">TOTAL</span>{sum(ss.scores)}</div>'
+            f'</div></div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    c = st.columns([1, 2, 1])[1]
     if ss.in_ultra:
         with c:
             if st.button("BACK TO THE BENCH", type="primary", **BTN):
