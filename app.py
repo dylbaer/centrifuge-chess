@@ -95,11 +95,11 @@ class Room:
 LOBBY = Room("lobby", "MAIN LAB", "the good bench", "#141a3a", "#0d1128", "#57b6ff",
              "#10142a", "#141935", "roach", "sinks")
 VIVARIUM = Room("viv", "VIVARIUM", "do not feed the animals", "#1d2a18", "#0d1509", "#8fd14f",
-                "#121b0e", "#172312", "monkey", "cages")
+                "#121b0e", "#172312", "monkey,rabbit,mouse,rat", "cages")
 RADIO = Room("radio", "RADIOISOTOPE SUITE", "dosimeter required", "#2b2a0c", "#151405", "#d4ff3d",
              "#1a1907", "#22200b", "flake", "drums")
-AQUATICS = Room("aqua", "AQUATICS FACILITY", "3,000 zebrafish", "#062a3a", "#02141d", "#3fd2f2",
-                "#04202c", "#062a38", "fish", "tanks")
+AQUATICS = Room("aqua", "AQUATICS FACILITY", "3,140 tanks of zebrafish", "#062a3a", "#02141d", "#3fd2f2",
+                "#04202c", "#062a38", "fish,bubble", "tanks")
 BSL4 = Room("bsl4", "BSL-4 CONTAINMENT", "positive pressure", "#2a0f2e", "#150618", "#c86bff",
             "#1c0a20", "#240d29", "virus", "airlock")
 XENO = Room("xeno", "XENOBIOLOGY", "sample 9 is awake", "#0e2b26", "#041512", "#4fffb0",
@@ -110,15 +110,23 @@ FLYROOM = Room("fly", "FLY ROOM", "someone left the vials open", "#33240f", "#1a
                "#221806", "#2b1f0a", "fly", "vials")
 GLASSWASH = Room("glass", "GLASSWASH", "everything is still wet", "#1a2333", "#0b1019", "#9fb8d8",
                  "#0e141f", "#131b28", "bubble", "sinks")
+TISSUE = Room("tissue", "TISSUE CULTURE", "plate 4 is contaminated again", "#2a1030", "#140618", "#ff8fd1",
+              "#1b0a20", "#230d29", "spore", "hoods")
+EM = Room("em", "ELECTRON MICROSCOPY", "do not breathe near the column", "#101426", "#06080f", "#9fd8ff",
+          "#0a0d18", "#0e1220", "flake", "column")
+ANALYTIC = Room("mass", "ANALYTICAL SUITE", "the mass spec is down", "#12242a", "#060f13", "#5be3c8",
+                "#0a181d", "#0e2027", "bubble", "instruments")
+GREENHOUSE = Room("green", "PLANT GROWTH ROOM", "18 hour days, no exceptions", "#16300f", "#081a06", "#a8ff5c",
+                  "#0d2109", "#12290d", "butterfly,aphid", "trays")
 SUITE3 = Room("suite3", "SUITE 3", "unscheduled run", "#3a0a16", "#160208", "#ff3d8b",
               "#180309", "#210610", "roach", "airlock")
 
-# Fixed tour of the building, one room per level.
-ALL_ROOMS = [LOBBY, VIVARIUM, RADIO, AQUATICS, BSL4, XENO, CRYO, FLYROOM, GLASSWASH, SUITE3]
+ALL_ROOMS = [LOBBY, VIVARIUM, RADIO, AQUATICS, BSL4, XENO, CRYO, FLYROOM,
+             GLASSWASH, TISSUE, EM, ANALYTIC, GREENHOUSE, SUITE3]
 
-# Fixed tour of the building, one room per level.
-ROOM_TOUR = [LOBBY, LOBBY, VIVARIUM, FLYROOM, AQUATICS, RADIO,
-             GLASSWASH, CRYO, BSL4, XENO, CRYO, RADIO, XENO]
+# Fixed tour of the building. Thirteen levels, thirteen different rooms.
+ROOM_TOUR = [LOBBY, VIVARIUM, FLYROOM, TISSUE, AQUATICS, GREENHOUSE,
+             GLASSWASH, CRYO, ANALYTIC, EM, RADIO, BSL4, XENO]
 
 
 # ==========================================================================
@@ -577,106 +585,193 @@ def _label(left: str, bottom: int, text: str, col: str, size: int = 7) -> str:
 def props_vivarium(room: Room, rng: random.Random) -> str:
     a = room.accent
     out = []
-    # three-tier mouse cage racks
-    for r, x in enumerate((3, 20)):
+    # mouse + rat racks, three tiers each
+    for x in (1.5, 17):
         for tier in range(3):
-            y = 40 + tier * 46
+            y = 40 + tier * 50
             bars = "".join(f'<div style="position:absolute;left:{5+j*11}px;top:2px;bottom:2px;'
                            f'width:2px;background:#8d9a7a"></div>' for j in range(11))
-            mice = "".join(
-                f'<div style="position:absolute;bottom:4px;left:{12+k*34}px;width:15px;height:8px;'
-                f'border-radius:50% 40% 40% 50%;background:#e6dfd4"></div>'
-                f'<div style="position:absolute;bottom:7px;left:{4+k*34}px;width:10px;height:2px;'
-                f'background:#e6dfd4"></div>' for k in range(rng.randint(1, 3)))
+            animals = "".join(
+                f'<div style="position:absolute;bottom:4px;left:{12+k*32}px;width:15px;height:8px;'
+                f'border-radius:50% 40% 40% 50%;background:{rng.choice(["#e6dfd4","#b9ada0","#cbbba6"])}"></div>'
+                f'<div style="position:absolute;bottom:7px;left:{4+k*32}px;width:10px;height:2px;'
+                f'background:#cfc6bd"></div>' for k in range(rng.randint(1, 3)))
             out.append(
-                f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:130px;height:42px;'
-                f'border:3px solid #8d9a7a;background:rgba(220,214,190,0.10);z-index:4">'
-                f'{bars}{mice}'
-                f'<div style="position:absolute;right:-9px;top:8px;width:9px;height:22px;'
-                f'background:#bcd6e8;border:1px solid #8d9a7a"></div></div>')
-    # primate enclosure with rope
+                f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:128px;height:46px;'
+                f'border:3px solid #8d9a7a;background:rgba(220,214,190,0.10);z-index:4">{bars}{animals}'
+                f'<div style="position:absolute;right:-9px;top:9px;width:9px;height:24px;'
+                f'background:#bcd6e8;border:1px solid #8d9a7a"></div>'
+                f'<div style="position:absolute;top:-11px;left:2px;font-family:monospace;font-size:7px;'
+                f'color:{a};opacity:.75">CAGE {tier+1}{"A" if x<10 else "B"}</div></div>')
+    # rabbit pens
+    for k, x in enumerate((34, 46)):
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:40px;width:150px;height:96px;'
+            f'border:3px solid #8d9a7a;background:rgba(255,255,255,.05);z-index:4">'
+            + "".join(f'<div style="position:absolute;left:{10+j*16}px;top:0;bottom:0;width:2px;'
+                      f'background:#8d9a7a;opacity:.8"></div>' for j in range(9))
+            + f'<div style="position:absolute;bottom:6px;left:24px;width:30px;height:17px;'
+              f'background:#e8e2d6;border-radius:50% 45% 40% 50%"></div>'
+              f'<div style="position:absolute;bottom:20px;left:44px;width:13px;height:12px;'
+              f'background:#e8e2d6;border-radius:50%"></div>'
+              f'<div style="position:absolute;bottom:30px;left:46px;width:4px;height:13px;'
+              f'background:#e8e2d6;border-radius:2px;transform:rotate(-12deg)"></div>'
+              f'<div style="position:absolute;bottom:30px;left:52px;width:4px;height:13px;'
+              f'background:#e8e2d6;border-radius:2px;transform:rotate(12deg)"></div>'
+              f'<div style="position:absolute;bottom:6px;right:14px;width:34px;height:11px;'
+              f'background:#b39a5c;border-radius:3px"></div></div>')
+    # primate enclosure with rope, swing and a climbing frame
     out.append(
-        f'<div style="position:absolute;left:44%;bottom:40px;width:230px;height:150px;'
-        f'border:4px solid #8d9a7a;background:rgba(0,0,0,.22);z-index:4">'
-        + "".join(f'<div style="position:absolute;left:{8+j*17}px;top:0;bottom:0;width:3px;'
-                  f'background:#8d9a7a;opacity:.85"></div>' for j in range(13))
-        + f'<div style="position:absolute;top:16px;left:6px;right:6px;height:3px;background:#7a5c3a;'
-          f'border-radius:2px"></div>'
-          f'<div style="position:absolute;top:19px;left:52%;width:3px;height:44px;background:#7a5c3a"></div>'
-          f'<div style="position:absolute;top:61px;left:44%;width:44px;height:6px;background:#7a5c3a;'
-          f'border-radius:2px"></div></div>')
-    # feed bins + hay
-    out.append(f'<div style="position:absolute;left:76%;bottom:40px;width:60px;height:54px;'
+        f'<div style="position:absolute;left:60%;bottom:40px;width:280px;height:210px;'
+        f'border:5px solid #8d9a7a;background:rgba(0,0,0,.24);z-index:4">'
+        + "".join(f'<div style="position:absolute;left:{10+j*18}px;top:0;bottom:0;width:3px;'
+                  f'background:#8d9a7a;opacity:.85"></div>' for j in range(15))
+        + f'<div style="position:absolute;top:20px;left:8px;right:8px;height:4px;background:#7a5c3a;border-radius:2px"></div>'
+          f'<div style="position:absolute;top:24px;left:46%;width:4px;height:54px;background:#7a5c3a"></div>'
+          f'<div style="position:absolute;top:76px;left:38%;width:56px;height:8px;background:#7a5c3a;border-radius:3px"></div>'
+          f'<div style="position:absolute;bottom:0;left:30px;width:6px;height:120px;background:#7a5c3a"></div>'
+          f'<div style="position:absolute;bottom:60px;left:30px;width:80px;height:6px;background:#7a5c3a"></div>'
+          f'<div style="position:absolute;bottom:110px;right:26px;width:6px;height:70px;background:#7a5c3a"></div>'
+          f'<div style="position:absolute;bottom:14px;right:24px;width:46px;height:30px;'
+          f'background:#5a4228;border-radius:4px"></div></div>')
+    # feed bins, hay, hose, clipboard
+    out.append(f'<div style="position:absolute;left:88%;bottom:40px;width:64px;height:60px;'
                f'background:#6b5a3a;border:2px solid #8d9a7a;border-radius:3px;z-index:4"></div>'
-               f'<div style="position:absolute;left:84%;bottom:40px;width:60px;height:40px;'
-               f'background:#b39a5c;border-radius:4px;z-index:4;opacity:.8"></div>')
-    out.append(_label("44%", 196, "PRIMATE ENCLOSURE 2", a))
-    out.append(_label("3%", 182, "MOUSE HOLDING", a))
+               f'<div style="position:absolute;left:94%;bottom:40px;width:58px;height:42px;'
+               f'background:#b39a5c;border-radius:5px;z-index:4;opacity:.85"></div>'
+               f'<div style="position:absolute;left:88%;bottom:112px;width:44px;height:56px;'
+               f'background:#e8ecf5;opacity:.30;border:2px solid #8a97ab;z-index:4"></div>')
+    out.append(_label("60%", 262, "PRIMATE ENCLOSURE 2", a))
+    out.append(_label("2%", 200, "RODENT HOLDING", a))
+    out.append(_label("34%", 148, "LAGOMORPH PENS", a))
     return "".join(out)
-
 
 def props_fly(room: Room, rng: random.Random) -> str:
     a = room.accent
     out = []
-    # vial racks, three shelves
-    for shelf, y in enumerate((40, 96, 152)):
-        for k in range(14):
-            x = 3 + k * 6.6
+    # four shelves of vials
+    for shelf, y in enumerate((40, 96, 152, 208)):
+        for k in range(15):
+            x = 2 + k * 6.3
             fill = rng.choice(["#8a5a1a", "#a86a20", "#6d4614"])
+            flies_in = "".join(
+                f'<div style="position:absolute;top:{rng.randint(4,26)}px;left:{rng.randint(3,12)}px;'
+                f'width:3px;height:2px;background:#2b2416;border-radius:50%"></div>'
+                for _ in range(rng.randint(0, 3)))
             out.append(
                 f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:19px;height:48px;'
                 f'background:rgba(255,200,97,.16);border:1px solid {a};border-radius:2px 2px 5px 5px;z-index:4">'
                 f'<div style="position:absolute;bottom:0;left:0;right:0;height:14px;background:{fill};opacity:.85"></div>'
                 f'<div style="position:absolute;top:2px;left:5px;width:8px;height:5px;background:#dcd6c4;'
-                f'border-radius:2px"></div></div>')
-        out.append(f'<div style="position:absolute;left:2%;right:2%;bottom:{y-6}px;height:6px;'
+                f'border-radius:2px"></div>{flies_in}</div>')
+        out.append(f'<div style="position:absolute;left:1%;right:1%;bottom:{y-6}px;height:6px;'
                    f'background:#5a4a2a;z-index:3"></div>')
-    # CO2 pad + scope + banana crate
-    out.append(f'<div style="position:absolute;left:70%;bottom:208px;width:80px;height:14px;'
-               f'background:#dcd6c4;opacity:.5;border-radius:2px;z-index:4"></div>')
-    out.append(microscope("60%", 208, a))
-    out.append(f'<div style="position:absolute;left:86%;bottom:208px;width:56px;height:30px;'
-               f'background:#7a5c22;border:2px solid #a8863a;z-index:4"></div>'
-               f'<div style="position:absolute;left:87%;bottom:230px;width:44px;height:12px;'
-               f'background:#e8c95c;border-radius:8px;z-index:4"></div>')
-    # fly strips
+    # pushing station: CO2 pad, scope, brush, morgue
+    out.append(f'<div style="position:absolute;left:60%;bottom:264px;width:120px;height:16px;'
+               f'background:#dcd6c4;opacity:.55;border-radius:2px;z-index:4"></div>')
+    out.append(microscope("62%", 280, a))
+    out.append(f'<div style="position:absolute;left:70%;bottom:280px;width:5px;height:30px;'
+               f'background:#8a6a3a;z-index:4"></div>'
+               f'<div style="position:absolute;left:69.4%;bottom:308px;width:14px;height:9px;'
+               f'background:#3a2a14;border-radius:2px;z-index:4"></div>')
+    out.append(f'<div style="position:absolute;left:76%;bottom:266px;width:52px;height:38px;'
+               f'background:#2a1d0e;border:2px solid {a};border-radius:3px;z-index:4">'
+               f'<div style="position:absolute;bottom:4px;left:5px;font-family:monospace;font-size:7px;'
+               f'color:{a};opacity:.8">MORGUE</div></div>')
+    # CO2 cylinder
+    out.append(f'<div style="position:absolute;left:88%;bottom:264px;width:40px;height:120px;'
+               f'background:#4a4a2a;border:2px solid {a};border-radius:20px 20px 3px 3px;z-index:4">'
+               f'<div style="position:absolute;top:8px;left:11px;width:18px;height:11px;'
+               f'background:{a};opacity:.55;border-radius:2px"></div></div>')
+    # banana crate + fruit
+    out.append(f'<div style="position:absolute;left:3%;bottom:266px;width:80px;height:44px;'
+               f'background:#7a5c22;border:2px solid #a8863a;z-index:4"></div>')
     for k in range(4):
-        out.append(f'<div style="position:absolute;left:{16+k*22}%;top:0;width:7px;height:{60+k*14}px;'
-                   f'background:#c8a24a;opacity:.75;z-index:5"></div>')
-    out.append(_label("2%", 212, "DROSOPHILA STOCKS", a))
+        out.append(f'<div style="position:absolute;left:{4+k*1.6}%;bottom:{306+ (k%2)*9}px;width:44px;'
+                   f'height:13px;background:#e8c95c;border-radius:9px;z-index:5;'
+                   f'transform:rotate({-14+k*9}deg)"></div>')
+    # incubator with fly stocks
+    out.append(f'<div style="position:absolute;left:20%;bottom:266px;width:120px;height:100px;'
+               f'background:#3a2a14;border:3px solid #a8863a;border-radius:4px;z-index:4">'
+               f'<div style="position:absolute;top:12px;left:14px;width:60px;height:60px;'
+               f'border-radius:50%;border:3px solid {a};background:rgba(255,200,97,.14)"></div>'
+               f'<div style="position:absolute;bottom:8px;left:14px;font-family:monospace;font-size:9px;'
+               f'color:{a};opacity:.85">25.0 C</div></div>')
+    # giant fly poster
+    out.append(f'<div style="position:absolute;left:40%;bottom:270px;width:120px;height:96px;'
+               f'background:rgba(255,200,97,.08);border:3px solid {a};z-index:4">'
+               f'<div style="position:absolute;top:26px;left:32px;width:56px;height:30px;'
+               f'background:#3a2f18;border-radius:50% 40% 40% 50%"></div>'
+               f'<div style="position:absolute;top:18px;left:26px;width:22px;height:20px;'
+               f'background:#c0392b;border-radius:50%;opacity:.9"></div>'
+               f'<div style="position:absolute;top:16px;left:52px;width:38px;height:14px;'
+               f'background:rgba(255,255,255,.35);border-radius:50% 50% 20% 20%;transform:rotate(-18deg)"></div>'
+               f'<div style="position:absolute;bottom:5px;left:0;right:0;text-align:center;'
+               f'font-family:monospace;font-size:8px;color:{a}">D. MELANOGASTER</div></div>')
+    # flypaper
+    for k in range(5):
+        out.append(f'<div style="position:absolute;left:{12+k*19}%;top:0;width:8px;height:{56+k*13}px;'
+                   f'background:#c8a24a;opacity:.75;z-index:6"></div>')
+    out.append(_label("2%", 380, "DROSOPHILA STOCKS", a))
     return "".join(out)
-
 
 def props_aquatics(room: Room, rng: random.Random) -> str:
     a = room.accent
     out = []
-    for tier, y in enumerate((40, 118)):
-        for k in range(5):
-            x = 2 + k * 19.5
+    # three tiers of tanks, fish inside, labelled
+    for tier, y in enumerate((40, 118, 196)):
+        for k in range(6):
+            x = 1.5 + k * 16.4
             fish = "".join(
-                f'<div style="position:absolute;top:{rng.randint(8,50)}px;left:{rng.randint(6,110)}px;'
-                f'width:12px;height:5px;border-radius:50% 20% 20% 50%;background:{a};opacity:.85"></div>'
-                for _ in range(rng.randint(2, 5)))
+                f'<div style="position:absolute;top:{rng.randint(8,46)}px;left:{rng.randint(8,110)}px;'
+                f'width:11px;height:5px;border-radius:50% 20% 20% 50%;background:{a};opacity:.85"></div>'
+                for _ in range(rng.randint(3, 7)))
+            weed = "".join(
+                f'<div style="position:absolute;bottom:9px;left:{12+j*26}px;width:4px;'
+                f'height:{rng.randint(12,26)}px;background:#3f8f5a;opacity:.7;border-radius:3px;'
+                f'transform-origin:bottom center;animation:sway2 {2.0+j*0.4:.1f}s ease-in-out infinite"></div>'
+                for j in range(3))
             out.append(
-                f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:140px;height:68px;'
+                f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:132px;height:66px;'
                 f'border:3px solid {a};z-index:4;overflow:hidden;'
-                f'background:linear-gradient(180deg,rgba(63,210,242,.34),rgba(63,210,242,.14));'
-                f'box-shadow:inset 0 0 26px rgba(63,210,242,.4)">{fish}'
-                f'<div style="position:absolute;bottom:0;left:0;right:0;height:9px;background:#2a4b57;opacity:.8"></div>'
-                f'</div>')
-    # plumbing + nets
-    out.append(f'<div style="position:absolute;left:0;right:0;bottom:196px;height:9px;'
-               f'background:#4a6b78;z-index:3"></div>')
-    for k in range(6):
-        out.append(f'<div style="position:absolute;left:{7+k*16}%;bottom:186px;width:7px;height:16px;'
+                f'background:linear-gradient(180deg,rgba(63,210,242,.36),rgba(63,210,242,.15));'
+                f'box-shadow:inset 0 0 26px rgba(63,210,242,.45)">{fish}{weed}'
+                f'<div style="position:absolute;bottom:0;left:0;right:0;height:9px;background:#2a4b57;opacity:.85"></div>'
+                f'<div style="position:absolute;top:3px;left:4px;font-family:monospace;font-size:8px;'
+                f'color:#d6f4ff;opacity:.75">AB{tier}{k}</div></div>')
+    # filtration tower + pumps
+    out.append(
+        f'<div style="position:absolute;right:2%;bottom:40px;width:96px;height:260px;'
+        f'background:#123844;border:3px solid {a};border-radius:5px;z-index:5">'
+        + "".join(f'<div style="position:absolute;top:{18+j*46}px;left:12px;right:12px;height:28px;'
+                  f'background:rgba(63,210,242,.22);border:2px solid {a}"></div>' for j in range(5))
+        + f'<div style="position:absolute;bottom:10px;left:26px;width:44px;height:22px;background:{a};'
+          f'opacity:.5;border-radius:3px"></div></div>')
+    # overhead plumbing
+    out.append(f'<div style="position:absolute;left:0;right:0;bottom:274px;height:11px;background:#4a6b78;z-index:3"></div>')
+    for k in range(10):
+        out.append(f'<div style="position:absolute;left:{4+k*10}%;bottom:262px;width:7px;height:18px;'
                    f'background:#4a6b78;z-index:3"></div>')
-    out.append(f'<div style="position:absolute;left:88%;bottom:212px;width:8px;height:52px;'
-               f'background:#8a7a5a;z-index:4"></div>'
-               f'<div style="position:absolute;left:85%;bottom:252px;width:44px;height:26px;'
-               f'border:3px solid #8a7a5a;border-radius:50%;z-index:4"></div>')
-    out.append(_label("2%", 214, "ZEBRAFISH SYSTEM &mdash; 3,140 TANKS", a))
+    # big display tank with a shark that should not be there
+    out.append(
+        f'<div style="position:absolute;left:36%;bottom:288px;width:300px;height:104px;'
+        f'border:4px solid {a};z-index:5;overflow:hidden;'
+        f'background:linear-gradient(180deg,rgba(63,210,242,.28),rgba(63,210,242,.10))">'
+        f'<div style="position:absolute;top:38px;left:-90px;width:86px;height:26px;background:#5a7f8c;'
+        f'border-radius:50% 18% 18% 50%;animation:swim 9s linear infinite">'
+        f'<div style="position:absolute;top:-13px;left:32px;width:0;height:0;'
+        f'border-left:9px solid transparent;border-right:9px solid transparent;'
+        f'border-bottom:15px solid #5a7f8c"></div></div>'
+        f'<div style="position:absolute;top:5px;left:8px;font-family:monospace;font-size:9px;'
+        f'color:#d6f4ff;opacity:.8">DISPLAY TANK &mdash; DO NOT FEED</div></div>')
+    # nets on the wall
+    for k, x in enumerate((3, 9)):
+        out.append(f'<div style="position:absolute;left:{x}%;bottom:290px;width:8px;height:56px;'
+                   f'background:#8a7a5a;z-index:5"></div>'
+                   f'<div style="position:absolute;left:{x-1.4}%;bottom:334px;width:46px;height:28px;'
+                   f'border:3px solid #8a7a5a;border-radius:50%;z-index:5"></div>')
+    out.append(_label("2%", 380, "ZEBRAFISH SYSTEM &mdash; 3,140 TANKS", a))
     return "".join(out)
-
 
 def props_radio(room: Room, rng: random.Random) -> str:
     a = room.accent
@@ -888,11 +983,143 @@ def props_lobby(room: Room, rng: random.Random) -> str:
     return "".join(out)
 
 
+def props_tissue(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # laminar flow hoods with sash glass
+    for k, x in enumerate((3, 36, 69)):
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:40px;width:250px;height:190px;'
+            f'background:rgba(255,255,255,.07);border:4px solid #8a97ab;z-index:4">'
+            f'<div style="position:absolute;top:10px;left:10px;right:10px;height:74px;'
+            f'background:rgba(255,143,209,.16);border:2px solid {a}"></div>'
+            f'<div style="position:absolute;bottom:10px;left:12px;right:12px;height:76px;'
+            f'background:rgba(0,0,0,.30)"></div>'
+            f'<div style="position:absolute;bottom:18px;left:20px;width:44px;height:26px;'
+            f'background:{a};opacity:.45;border-radius:3px"></div>'
+            f'<div style="position:absolute;bottom:18px;left:72px;width:44px;height:26px;'
+            f'background:{a};opacity:.30;border-radius:3px"></div>'
+            f'<div style="position:absolute;bottom:52px;left:20px;width:96px;height:20px;'
+            f'background:rgba(255,255,255,.14)"></div></div>')
+    # incubators with round windows
+    for x in (25, 58):
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:236px;width:110px;height:76px;'
+            f'background:#3a2440;border:3px solid #8a97ab;border-radius:4px;z-index:4">'
+            f'<div style="position:absolute;top:14px;left:20px;width:46px;height:46px;'
+            f'border-radius:50%;border:3px solid {a};background:rgba(255,143,209,.14)"></div>'
+            f'<div style="position:absolute;top:20px;right:14px;width:8px;height:8px;'
+            f'border-radius:50%;background:{a};animation:warn 2.1s ease-in-out infinite"></div>'
+            f'<div style="position:absolute;bottom:8px;left:18px;font-family:monospace;font-size:9px;'
+            f'color:{a};opacity:.8">37.0 5%CO2</div></div>')
+    # media bottles, pink
+    for k in range(6):
+        out.append(
+            f'<div style="position:absolute;left:{4+k*3.4}%;bottom:236px;width:26px;height:44px;'
+            f'background:rgba(255,143,209,.35);border:2px solid {a};border-radius:3px 3px 5px 5px;z-index:4">'
+            f'<div style="position:absolute;top:-6px;left:7px;width:12px;height:7px;background:#dcd6e4"></div></div>')
+    out.append(_label("2%", 320, "TISSUE CULTURE &mdash; PLATE 4 IS CONTAMINATED", a))
+    return "".join(out)
+
+
+def props_em(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # the column
+    out.append(
+        f'<div style="position:absolute;left:50%;margin-left:-58px;bottom:40px;width:116px;height:250px;'
+        f'background:linear-gradient(180deg,#3a4258,#20263a);border:4px solid #8a97ab;'
+        f'border-radius:8px 8px 3px 3px;z-index:5">'
+        + "".join(f'<div style="position:absolute;top:{22+j*40}px;left:-12px;right:-12px;height:16px;'
+                  f'background:#4a5570;border:2px solid #8a97ab;border-radius:3px"></div>' for j in range(5))
+        + f'<div style="position:absolute;bottom:20px;left:50%;margin-left:-22px;width:44px;height:30px;'
+          f'background:{a};opacity:.30;border-radius:3px"></div></div>')
+    # console + screens
+    out.append(f'<div style="position:absolute;left:9%;bottom:40px;width:230px;height:96px;'
+               f'background:#2a3040;border:3px solid #6b7a8a;z-index:4"></div>')
+    for k in range(2):
+        out.append(
+            f'<div style="position:absolute;left:{10+k*11}%;bottom:140px;width:150px;height:106px;'
+            f'background:#05070d;border:3px solid #6b7a8a;z-index:5;overflow:hidden">'
+            f'<div style="position:absolute;top:50%;left:50%;width:70px;height:70px;margin:-35px 0 0 -35px;'
+            f'border-radius:50%;background:radial-gradient(circle,{a} 0%,transparent 68%);opacity:.35"></div>'
+            f'<div style="position:absolute;top:8px;left:8px;width:60%;height:2px;background:{a};'
+            f'animation:trace 2.2s linear infinite"></div></div>')
+    # gas cylinders
+    for k in range(3):
+        out.append(f'<div style="position:absolute;right:{4+k*7}%;bottom:40px;width:44px;height:150px;'
+                   f'background:#3f4a5c;border:2px solid #8a97ab;border-radius:22px 22px 3px 3px;z-index:4">'
+                   f'<div style="position:absolute;top:8px;left:12px;width:20px;height:12px;'
+                   f'background:{a};opacity:.5;border-radius:2px"></div></div>')
+    out.append(_label("2%", 262, "ELECTRON MICROSCOPY &mdash; COLUMN UNDER VACUUM", a))
+    return "".join(out)
+
+
+def props_analytic(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # instrument bays
+    for k, x in enumerate((3, 27, 51, 75)):
+        out.append(
+            f'<div style="position:absolute;left:{x}%;bottom:40px;width:200px;height:160px;'
+            f'background:#12252b;border:3px solid #4a6b70;border-radius:4px;z-index:4">'
+            f'<div style="position:absolute;top:12px;left:12px;right:12px;height:44px;'
+            f'background:#05100f;border:2px solid {a}">'
+            + "".join(f'<div style="position:absolute;bottom:4px;left:{6+j*13}px;width:7px;'
+                      f'height:{rng.randint(6,34)}px;background:{a};opacity:.75"></div>' for j in range(13))
+            + f'</div>'
+              f'<div style="position:absolute;bottom:16px;left:14px;width:60px;height:32px;'
+              f'background:#2a3f44;border:2px solid #4a6b70"></div>'
+              f'<div style="position:absolute;bottom:16px;left:84px;width:36px;height:32px;'
+              f'border-radius:50%;border:3px solid {a};opacity:.6"></div>'
+              f'<div style="position:absolute;top:66px;right:14px;width:9px;height:9px;border-radius:50%;'
+              f'background:{a};animation:warn 1.7s ease-in-out infinite"></div></div>')
+    # gas lines along the ceiling
+    out.append(f'<div style="position:absolute;left:0;right:0;bottom:214px;height:8px;background:#3f5f66;z-index:3"></div>')
+    for k in range(9):
+        out.append(f'<div style="position:absolute;left:{5+k*11}%;bottom:200px;width:6px;height:18px;'
+                   f'background:#3f5f66;z-index:3"></div>')
+    # out of order sign
+    out.append(f'<div style="position:absolute;left:52%;bottom:206px;z-index:7;background:rgba(0,0,0,.6);'
+               f'border:2px solid {MAGENTA};color:{MAGENTA};font-family:monospace;font-size:11px;'
+               f'padding:5px 9px">OUT OF ORDER</div>')
+    out.append(_label("2%", 240, "ANALYTICAL SUITE", a))
+    return "".join(out)
+
+
+def props_green(room: Room, rng: random.Random) -> str:
+    a = room.accent
+    out = []
+    # grow racks with plants under lights
+    for tier, y in enumerate((40, 132)):
+        out.append(f'<div style="position:absolute;left:2%;right:2%;bottom:{y+72}px;height:9px;'
+                   f'background:#ff7fd0;opacity:.45;z-index:3;box-shadow:0 6px 30px rgba(255,127,208,.5)"></div>')
+        out.append(f'<div style="position:absolute;left:2%;right:2%;bottom:{y-6}px;height:7px;'
+                   f'background:#3a4a2a;z-index:3"></div>')
+        for k in range(16):
+            x = 3 + k * 6.1
+            h = rng.randint(26, 56)
+            leaves = "".join(
+                f'<div style="position:absolute;bottom:{10+j*11}px;left:{-9 if j%2 else 7}px;'
+                f'width:19px;height:9px;background:{a};opacity:.75;'
+                f'border-radius:{"50% 10%" if j%2 else "10% 50%"};'
+                f'animation:sway2 {2.4+j*0.3:.1f}s ease-in-out infinite"></div>' for j in range(h // 14))
+            out.append(
+                f'<div style="position:absolute;left:{x}%;bottom:{y}px;width:34px;height:{h+16}px;z-index:4">'
+                f'<div style="position:absolute;bottom:0;left:4px;width:26px;height:15px;'
+                f'background:#6b4a2a;border-radius:2px 2px 4px 4px"></div>'
+                f'<div style="position:absolute;bottom:14px;left:15px;width:3px;height:{h}px;'
+                f'background:#4f7a2a"></div>{leaves}</div>')
+    out.append(_label("2%", 248, "PLANT GROWTH &mdash; 18 HOUR DAYS", a))
+    return "".join(out)
+
+
 PROP_BUILDERS = {
     "viv": props_vivarium, "fly": props_fly, "aqua": props_aquatics,
     "radio": props_radio, "cryo": props_cryo, "bsl4": props_bsl4,
     "xeno": props_xeno, "glass": props_glass, "lobby": props_lobby,
-    "suite3": props_bsl4,
+    "tissue": props_tissue, "em": props_em, "mass": props_analytic,
+    "green": props_green, "suite3": props_bsl4,
 }
 
 
@@ -908,7 +1135,13 @@ EXTRA_KEYFRAMES = """
                    50%{opacity:1;box-shadow:0 0 26px #ff3d8b} }
  @keyframes wave { from{transform:translateX(0)} to{transform:translateX(-40px)} }
  @keyframes gull { from{transform:translateX(0) translateY(0)} to{transform:translateX(120px) translateY(-14px)} }
- @keyframes vine { 0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(4deg)} }
+ @keyframes vine { 0%,100%{transform:rotate(-5deg)} 50%{transform:rotate(5deg)} }
+ @keyframes wave2 { from{transform:rotate(-24deg)} to{transform:rotate(26deg)} }
+ @keyframes hop { 0%,100%{transform:translateY(0)} 45%{transform:translateY(-9px)} }
+ @keyframes flutter { 0%,100%{transform:translate(0,0)} 25%{transform:translate(26px,-20px)}
+                      50%{transform:translate(52px,4px)} 75%{transform:translate(20px,18px)} }
+ @keyframes flap { from{transform:rotateY(0deg)} to{transform:rotateY(72deg)} }
+ @keyframes sway2 { 0%,100%{transform:rotate(-7deg)} 50%{transform:rotate(7deg)} }
 </style>
 """
 
@@ -938,75 +1171,183 @@ def ocean_window(left: str, top: int, w: int, h: int) -> str:
         f'</div>')
 
 
+def _sprite_monkey(rng, a: str) -> str:
+    """Reads as a monkey: ears, muzzle, two arms, legs, curled tail."""
+    top = rng.randint(14, 74)
+    dur = rng.uniform(4.5, 8.5)
+    d = rng.uniform(0, 4)
+    fur, skin = "#8a6240", "#d9b18a"
+    return (
+        f'<div style="position:absolute;top:{top}px;left:-56px;z-index:8;'
+        f'animation:swing {dur:.1f}s linear {d:.1f}s infinite">'
+        f'<div style="position:relative;width:34px;height:40px">'
+        # raised arm + hand
+        f'<div style="position:absolute;top:-11px;left:13px;width:5px;height:16px;background:{fur};'
+        f'border-radius:3px;transform:rotate(-16deg)"></div>'
+        f'<div style="position:absolute;top:-15px;left:11px;width:9px;height:8px;background:{skin};'
+        f'border-radius:50%"></div>'
+        # ears
+        f'<div style="position:absolute;top:5px;left:1px;width:9px;height:9px;background:{fur};border-radius:50%"></div>'
+        f'<div style="position:absolute;top:5px;right:1px;width:9px;height:9px;background:{fur};border-radius:50%"></div>'
+        # head + face
+        f'<div style="position:absolute;top:2px;left:6px;width:22px;height:19px;background:{fur};'
+        f'border-radius:50% 50% 45% 45%"></div>'
+        f'<div style="position:absolute;top:7px;left:10px;width:14px;height:11px;background:{skin};'
+        f'border-radius:50%"></div>'
+        f'<div style="position:absolute;top:9px;left:12px;width:3px;height:3px;background:#2a1d12;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:9px;left:19px;width:3px;height:3px;background:#2a1d12;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:14px;left:15px;width:5px;height:2px;background:#2a1d12;border-radius:2px"></div>'
+        # body + free arm + legs
+        f'<div style="position:absolute;top:19px;left:9px;width:16px;height:16px;background:{fur};'
+        f'border-radius:8px"></div>'
+        f'<div style="position:absolute;top:21px;left:24px;width:12px;height:4px;background:{fur};'
+        f'border-radius:3px;transform:rotate(24deg);animation:wave2 .7s ease-in-out infinite alternate"></div>'
+        f'<div style="position:absolute;top:33px;left:10px;width:5px;height:9px;background:{fur};border-radius:3px"></div>'
+        f'<div style="position:absolute;top:33px;left:19px;width:5px;height:9px;background:{fur};border-radius:3px"></div>'
+        # curled tail
+        f'<div style="position:absolute;top:24px;left:-9px;width:14px;height:14px;'
+        f'border:3px solid {fur};border-radius:50%;border-right-color:transparent;'
+        f'border-top-color:transparent"></div>'
+        f'</div></div>')
+
+
+def _sprite_rabbit(rng, a: str) -> str:
+    dur = rng.uniform(4.0, 7.0)
+    d = rng.uniform(0, 3.5)
+    fur = rng.choice(["#e8e2d6", "#cbbba6", "#8d8378"])
+    return (
+        f'<div style="position:absolute;bottom:{rng.randint(4,20)}px;left:-40px;z-index:7;'
+        f'animation:scurry {dur:.1f}s linear {d:.1f}s infinite">'
+        f'<div style="position:relative;width:30px;height:22px;animation:hop .5s ease-in-out infinite">'
+        f'<div style="position:absolute;bottom:0;left:0;width:22px;height:13px;background:{fur};'
+        f'border-radius:50% 45% 40% 50%"></div>'
+        f'<div style="position:absolute;bottom:7px;left:16px;width:11px;height:10px;background:{fur};'
+        f'border-radius:50%"></div>'
+        f'<div style="position:absolute;bottom:14px;left:17px;width:4px;height:11px;background:{fur};'
+        f'border-radius:2px;transform:rotate(-11deg)"></div>'
+        f'<div style="position:absolute;bottom:14px;left:22px;width:4px;height:11px;background:{fur};'
+        f'border-radius:2px;transform:rotate(11deg)"></div>'
+        f'<div style="position:absolute;bottom:9px;left:2px;width:6px;height:6px;background:#fff;'
+        f'border-radius:50%;opacity:.85"></div></div></div>')
+
+
+def _sprite_rodent(rng, a: str, big: bool) -> str:
+    dur = rng.uniform(2.6, 5.4)
+    d = rng.uniform(0, 3.5)
+    fur = "#b9ada0" if big else "#e6dfd4"
+    w, h = (20, 9) if big else (14, 7)
+    return (
+        f'<div style="position:absolute;bottom:{rng.randint(3,18)}px;left:-34px;z-index:7;'
+        f'animation:scurry {dur:.1f}s linear {d:.1f}s infinite">'
+        f'<div style="position:relative;width:{w+14}px;height:{h+6}px">'
+        f'<div style="position:absolute;bottom:0;left:8px;width:{w}px;height:{h}px;background:{fur};'
+        f'border-radius:50% 40% 40% 50%"></div>'
+        f'<div style="position:absolute;bottom:{h-2}px;left:{w-1}px;width:6px;height:6px;background:{fur};'
+        f'border-radius:50%"></div>'
+        f'<div style="position:absolute;bottom:2px;left:0;width:10px;height:2px;background:{fur};'
+        f'border-radius:2px;transform:rotate(-12deg)"></div>'
+        f'<div style="position:absolute;bottom:{h-3}px;left:{w+3}px;width:2px;height:2px;'
+        f'background:#2a1d12;border-radius:50%"></div></div></div>')
+
+
+def _sprite_butterfly(rng, a: str) -> str:
+    dur = rng.uniform(3.2, 6.0)
+    d = rng.uniform(0, 3)
+    col = rng.choice([a, "#ffd166", "#ff8fd1", "#fff3b0"])
+    return (
+        f'<div style="position:absolute;top:{rng.randint(16,110)}px;left:{rng.randint(3,90)}%;z-index:7;'
+        f'animation:flutter {dur:.1f}s ease-in-out {d:.1f}s infinite">'
+        f'<div style="position:relative;width:18px;height:12px">'
+        f'<div style="position:absolute;left:0;top:0;width:8px;height:11px;background:{col};opacity:.85;'
+        f'border-radius:60% 20% 60% 20%;transform-origin:right center;animation:flap .22s ease-in-out infinite alternate"></div>'
+        f'<div style="position:absolute;right:0;top:0;width:8px;height:11px;background:{col};opacity:.85;'
+        f'border-radius:20% 60% 20% 60%;transform-origin:left center;animation:flap .22s ease-in-out infinite alternate-reverse"></div>'
+        f'<div style="position:absolute;left:8px;top:2px;width:2px;height:8px;background:#2a1d12"></div>'
+        f'</div></div>')
+
+
 def critters(room: Room, seed: int, n: int = 7) -> str:
-    """Small animated inhabitants. Randomised per playthrough."""
+    """Small animated inhabitants. Species and placement randomise per run."""
     rng = random.Random(seed)
-    k = room.critter
+    species = [k.strip() for k in room.critter.split(",") if k.strip()]
     a = room.accent
     out = []
     for i in range(n):
+        k = rng.choice(species)
         d = rng.uniform(0, 4.2)
         dur = rng.uniform(3.0, 7.5)
         if k == "monkey":
-            top = rng.randint(16, 60)
-            out.append(
-                f'<div style="position:absolute;top:{top}px;left:-40px;z-index:6;'
-                f'animation:swing {dur:.1f}s linear {d:.1f}s infinite">'
-                f'<div style="width:15px;height:13px;background:#8a6240;border-radius:50% 50% 45% 45%"></div>'
-                f'<div style="width:11px;height:9px;background:#d9b18a;border-radius:50%;margin:-9px 0 0 2px"></div>'
-                f'<div style="width:19px;height:3px;background:#8a6240;margin:1px 0 0 -3px;border-radius:2px"></div>'
-                f'</div>')
+            out.append(_sprite_monkey(rng, a))
+        elif k == "rabbit":
+            out.append(_sprite_rabbit(rng, a))
         elif k == "mouse":
+            out.append(_sprite_rodent(rng, a, big=False))
+        elif k == "rat":
+            out.append(_sprite_rodent(rng, a, big=True))
+        elif k == "butterfly":
+            out.append(_sprite_butterfly(rng, a))
+        elif k == "aphid":
             out.append(
-                f'<div style="position:absolute;bottom:{rng.randint(4,26)}px;left:-30px;z-index:6;'
-                f'animation:scurry {dur:.1f}s linear {d:.1f}s infinite">'
-                f'<div style="width:13px;height:7px;background:#cfc6bd;border-radius:50% 40% 40% 50%"></div>'
-                f'<div style="width:9px;height:1px;background:#cfc6bd;margin-left:-8px"></div></div>')
+                f'<div style="position:absolute;bottom:{rng.randint(40,120)}px;left:{rng.randint(4,92)}%;'
+                f'width:6px;height:5px;border-radius:50%;background:#9bd44f;opacity:.8;z-index:7;'
+                f'animation:buzz {rng.uniform(1.4,3.0):.1f}s ease-in-out {d:.1f}s infinite"></div>')
+        elif k == "spore":
+            out.append(
+                f'<div style="position:absolute;top:{rng.randint(20,120)}px;left:{rng.randint(4,94)}%;'
+                f'width:{rng.randint(6,13)}px;height:{rng.randint(6,13)}px;border-radius:50%;'
+                f'background:{a};opacity:.30;z-index:7;'
+                f'animation:float {dur:.1f}s ease-in-out {d:.1f}s infinite"></div>')
         elif k == "fish":
             out.append(
-                f'<div style="position:absolute;top:{rng.randint(40,100)}px;left:-30px;z-index:6;'
-                f'animation:swim {dur:.1f}s linear {d:.1f}s infinite;opacity:.85">'
-                f'<div style="width:15px;height:6px;background:{a};border-radius:50% 20% 20% 50%"></div>'
-                f'<div style="width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;'
-                f'border-right:7px solid {a};margin:-7px 0 0 -6px"></div></div>')
+                f'<div style="position:absolute;top:{rng.randint(40,120)}px;left:-30px;z-index:7;'
+                f'animation:swim {dur:.1f}s linear {d:.1f}s infinite;opacity:.88">'
+                f'<div style="position:relative;width:24px;height:11px">'
+                f'<div style="position:absolute;left:6px;top:2px;width:16px;height:7px;background:{a};'
+                f'border-radius:50% 25% 25% 50%"></div>'
+                f'<div style="position:absolute;left:0;top:1px;width:0;height:0;'
+                f'border-top:5px solid transparent;border-bottom:5px solid transparent;'
+                f'border-right:8px solid {a}"></div>'
+                f'<div style="position:absolute;left:17px;top:3px;width:2px;height:2px;'
+                f'background:#04202c;border-radius:50%"></div></div></div>')
         elif k == "virus":
             sz = rng.randint(11, 19)
             spikes = "".join(
                 f'<div style="position:absolute;left:50%;top:50%;width:2px;height:{sz//2+4}px;'
-                f'background:{a};transform-origin:top center;transform:rotate({j*45}deg)"></div>' for j in range(8))
+                f'background:{a};transform-origin:top center;transform:rotate({j*45}deg)"></div>'
+                for j in range(8))
             out.append(
-                f'<div style="position:absolute;top:{rng.randint(20,110)}px;left:{rng.randint(4,92)}%;z-index:6;'
+                f'<div style="position:absolute;top:{rng.randint(20,110)}px;left:{rng.randint(4,92)}%;z-index:7;'
                 f'animation:float {dur:.1f}s ease-in-out {d:.1f}s infinite;opacity:.8">'
                 f'<div style="position:relative;width:{sz}px;height:{sz}px;border-radius:50%;'
                 f'background:{a};opacity:.55">{spikes}</div></div>')
         elif k == "alien":
             out.append(
-                f'<div style="position:absolute;bottom:{rng.randint(38,80)}px;left:{rng.randint(6,88)}%;z-index:6;'
+                f'<div style="position:absolute;bottom:{rng.randint(38,80)}px;left:{rng.randint(6,88)}%;z-index:7;'
                 f'animation:writhe {dur:.1f}s ease-in-out {d:.1f}s infinite">'
                 f'<div style="width:5px;height:{rng.randint(20,40)}px;background:{a};opacity:.6;'
                 f'border-radius:3px;transform-origin:bottom center"></div></div>')
         elif k == "flake":
             out.append(
                 f'<div style="position:absolute;top:-12px;left:{rng.randint(2,96)}%;width:4px;height:4px;'
-                f'border-radius:50%;background:{a};opacity:.75;z-index:6;'
+                f'border-radius:50%;background:{a};opacity:.75;z-index:7;'
                 f'animation:fall {dur:.1f}s linear {d:.1f}s infinite"></div>')
         elif k == "fly":
             out.append(
-                f'<div style="position:absolute;top:{rng.randint(24,110)}px;left:{rng.randint(4,92)}%;'
-                f'width:4px;height:3px;border-radius:50%;background:#2b2416;z-index:6;'
+                f'<div style="position:absolute;top:{rng.randint(24,120)}px;left:{rng.randint(4,92)}%;'
+                f'width:5px;height:4px;border-radius:50%;background:#2b2416;z-index:7;'
                 f'animation:buzz {rng.uniform(.7,1.6):.1f}s ease-in-out {d:.1f}s infinite"></div>')
         elif k == "bubble":
             out.append(
-                f'<div style="position:absolute;bottom:34px;left:{rng.randint(3,95)}%;width:{rng.randint(5,11)}px;'
-                f'height:{rng.randint(5,11)}px;border-radius:50%;border:1px solid {a};opacity:.6;z-index:6;'
+                f'<div style="position:absolute;bottom:34px;left:{rng.randint(3,95)}%;'
+                f'width:{rng.randint(5,12)}px;height:{rng.randint(5,12)}px;border-radius:50%;'
+                f'border:1px solid {a};opacity:.6;z-index:7;'
                 f'animation:rise {dur:.1f}s linear {d:.1f}s infinite"></div>')
-        else:  # roach
+        else:
             out.append(
                 f'<div style="position:absolute;bottom:{rng.randint(3,16)}px;left:-24px;width:9px;height:5px;'
-                f'border-radius:50%;background:#3a2a18;z-index:6;'
+                f'border-radius:50%;background:#3a2a18;z-index:7;'
                 f'animation:scurry {rng.uniform(2.2,4.5):.1f}s linear {d:.1f}s infinite"></div>')
     return "".join(out)
-
 
 CRITTER_KEYFRAMES = """
 <style>
@@ -1187,6 +1528,52 @@ def room_svg_background(room: Room, w: int = 1600, h: int = 900) -> str:
             for j in range(8):
                 p.append(f'<rect x="{1096+j*56}" y="{y+26}" width="36" height="46" fill="#9fb8d8" '
                          f'opacity="0.28" stroke="#9fb8d8" stroke-width="2"/>')
+    elif k == "tissue":
+        for x in (60, 560, 1060):
+            p.append(f'<rect x="{x}" y="{floor_y-300}" width="420" height="300" fill="#fff" '
+                     f'opacity="0.06" stroke="#8a97ab" stroke-width="6"/>')
+            p.append(f'<rect x="{x+20}" y="{floor_y-280}" width="380" height="120" fill="{a}" opacity="0.16"/>')
+            p.append(f'<rect x="{x+30}" y="{floor_y-130}" width="120" height="70" fill="{a}" opacity="0.30" rx="5"/>')
+            p.append(f'<rect x="{x+170}" y="{floor_y-130}" width="120" height="70" fill="{a}" opacity="0.20" rx="5"/>')
+    elif k == "em":
+        p.append(f'<rect x="{w//2-90}" y="{floor_y-430}" width="180" height="430" fill="#2a3140" '
+                 f'stroke="#8a97ab" stroke-width="7" rx="10"/>')
+        for j in range(6):
+            p.append(f'<rect x="{w//2-120}" y="{floor_y-400+j*66}" width="240" height="26" '
+                     f'fill="#4a5570" stroke="#8a97ab" stroke-width="4" rx="4"/>')
+        for x in (150, 1180):
+            p.append(f'<rect x="{x}" y="{floor_y-250}" width="270" height="180" fill="#05070d" '
+                     f'stroke="#6b7a8a" stroke-width="6"/>')
+            p.append(f'<circle cx="{x+135}" cy="{floor_y-160}" r="58" fill="{a}" opacity="0.22"/>')
+        for j in range(3):
+            p.append(f'<rect x="{1420+j*58}" y="{floor_y-240}" width="46" height="240" fill="#3f4a5c" '
+                     f'stroke="#8a97ab" stroke-width="3" rx="23"/>')
+    elif k == "mass":
+        for j in range(4):
+            x = 40 + j * 400
+            p.append(f'<rect x="{x}" y="{floor_y-260}" width="330" height="260" fill="#12252b" '
+                     f'stroke="#4a6b70" stroke-width="6" rx="6"/>')
+            p.append(f'<rect x="{x+22}" y="{floor_y-238}" width="286" height="86" fill="#05100f" '
+                     f'stroke="{a}" stroke-width="4"/>')
+            for b in range(16):
+                p.append(f'<rect x="{x+34+b*17}" y="{floor_y-170+rng.randint(-46,0)}" width="10" '
+                         f'height="{rng.randint(10,54)}" fill="{a}" opacity="0.7"/>')
+            p.append(f'<circle cx="{x+250}" cy="{floor_y-64}" r="30" fill="none" stroke="{a}" stroke-width="6"/>')
+        p.append(f'<rect y="{floor_y-330}" width="{w}" height="12" fill="#3f5f66"/>')
+    elif k == "green":
+        for tier in range(3):
+            y = floor_y - 110 - tier * 150
+            p.append(f'<rect y="{y+96}" width="{w}" height="12" fill="#3a4a2a"/>')
+            p.append(f'<rect y="{y-16}" width="{w}" height="12" fill="#ff7fd0" opacity="0.45"/>')
+            for j in range(24):
+                x = 20 + j * 68
+                hgt = rng.randint(40, 84)
+                p.append(f'<rect x="{x}" y="{y+70}" width="40" height="26" fill="#6b4a2a" rx="3"/>')
+                p.append(f'<rect x="{x+18}" y="{y+96-hgt}" width="5" height="{hgt-26}" fill="#4f7a2a"/>')
+                for lf in range(hgt // 22):
+                    off = -22 if lf % 2 else 5
+                    p.append(f'<ellipse cx="{x+20+off}" cy="{y+80-lf*20}" rx="20" ry="8" '
+                             f'fill="{a}" opacity="0.65"/>')
     else:
         p.append(f'<rect y="{floor_y-120}" width="{w}" height="14" fill="#2b3358"/>')
         for j in range(16):
@@ -1250,24 +1637,38 @@ def scene_attract(seed: int) -> str:
         f'{fuge_sprite(z, "active" if i == 2 else "todo", False, i, 96)}</div>'
         for i, (x, z) in enumerate([(2, TEACHING), (16, CORE), (31, TEACHING),
                                     (60, COLD), (75, PREP), (89, CORE)]))
-    # monkeys on a rope, clearly monkeys
-    rope = ('<div style="position:absolute;left:0;right:0;top:96px;height:4px;background:#7a5c3a;'
-            'z-index:6;box-shadow:0 1px 0 #5a4228"></div>')
+    # monkeys hanging from the rope by one hand, free arm waving
+    rope = ('<div style="position:absolute;left:0;right:0;top:104px;height:5px;background:#7a5c3a;'
+            'z-index:6;box-shadow:0 2px 0 #5a4228"></div>')
+    fur, skin = "#8a6240", "#d9b18a"
     monkeys = "".join(
-        f'<div style="position:absolute;left:{8+k*23}%;top:96px;z-index:7;transform-origin:top center;'
-        f'animation:vine {2.4+k*0.6:.1f}s ease-in-out {k*0.4:.1f}s infinite">'
-        f'<div style="width:4px;height:{16+k*4}px;background:#8a6240;margin:0 auto"></div>'
-        f'<div style="width:22px;height:18px;background:#8a6240;border-radius:50% 50% 42% 42%;position:relative">'
-        f'<div style="position:absolute;top:3px;left:3px;width:16px;height:12px;background:#d9b18a;'
+        f'<div style="position:absolute;left:{6+k*7}%;top:104px;z-index:7;transform-origin:top center;'
+        f'animation:vine {2.6+k*0.5:.1f}s ease-in-out {k*0.35:.1f}s infinite">'
+        f'<div style="position:relative;width:38px;height:78px">'
+        # gripping hand ON the rope, then the arm hanging down from it
+        f'<div style="position:absolute;top:-7px;left:12px;width:13px;height:11px;background:{skin};'
+        f'border-radius:50% 50% 40% 40%;border:2px solid {fur}"></div>'
+        f'<div style="position:absolute;top:3px;left:15px;width:6px;height:22px;background:{fur};'
+        f'border-radius:3px"></div>'
+        # head below the arm
+        f'<div style="position:absolute;top:23px;left:3px;width:10px;height:10px;background:{fur};border-radius:50%"></div>'
+        f'<div style="position:absolute;top:23px;right:3px;width:10px;height:10px;background:{fur};border-radius:50%"></div>'
+        f'<div style="position:absolute;top:21px;left:8px;width:24px;height:21px;background:{fur};'
+        f'border-radius:50% 50% 45% 45%"></div>'
+        f'<div style="position:absolute;top:27px;left:12px;width:16px;height:12px;background:{skin};'
         f'border-radius:50%"></div>'
-        f'<div style="position:absolute;top:4px;left:5px;width:3px;height:3px;background:#2a1d12;border-radius:50%"></div>'
-        f'<div style="position:absolute;top:4px;right:5px;width:3px;height:3px;background:#2a1d12;border-radius:50%"></div>'
-        f'<div style="position:absolute;top:-3px;left:-4px;width:8px;height:8px;background:#8a6240;border-radius:50%"></div>'
-        f'<div style="position:absolute;top:-3px;right:-4px;width:8px;height:8px;background:#8a6240;border-radius:50%"></div>'
-        f'</div>'
-        f'<div style="width:14px;height:18px;background:#8a6240;border-radius:6px;margin:0 auto"></div>'
-        f'<div style="width:22px;height:4px;background:#8a6240;border-radius:3px;margin:-14px 0 0 14px;'
-        f'transform:rotate(28deg)"></div></div>' for k in range(4))
+        f'<div style="position:absolute;top:29px;left:14px;width:3px;height:3px;background:#2a1d12;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:29px;left:22px;width:3px;height:3px;background:#2a1d12;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:35px;left:17px;width:6px;height:2px;background:#2a1d12;border-radius:2px"></div>'
+        # torso, waving free arm, dangling legs, curled tail
+        f'<div style="position:absolute;top:41px;left:11px;width:18px;height:19px;background:{fur};border-radius:9px"></div>'
+        f'<div style="position:absolute;top:44px;left:27px;width:14px;height:5px;background:{fur};'
+        f'border-radius:3px;transform-origin:left center;animation:wave2 .55s ease-in-out infinite alternate"></div>'
+        f'<div style="position:absolute;top:58px;left:12px;width:6px;height:13px;background:{fur};border-radius:3px"></div>'
+        f'<div style="position:absolute;top:58px;left:22px;width:6px;height:13px;background:{fur};border-radius:3px"></div>'
+        f'<div style="position:absolute;top:48px;left:-8px;width:16px;height:16px;border:3px solid {fur};'
+        f'border-radius:50%;border-right-color:transparent;border-top-color:transparent"></div>'
+        f'</div></div>' for k in range(4))
     roaches = critters(LOBBY, seed + 2, 3)
     inner = f"""
     {CRITTER_KEYFRAMES}{EXTRA_KEYFRAMES}
@@ -1276,7 +1677,7 @@ def scene_attract(seed: int) -> str:
                               50%{{text-shadow:0 0 24px #ffb627,0 0 62px rgba(255,182,39,.9)}} }}
       @keyframes blink {{ 0%,49%{{opacity:1}} 50%,100%{{opacity:0}} }}
       @keyframes idle {{ 50%{{transform:translateY(-4px)}} }}
-      .logo {{ position:absolute; top:150px; left:0; right:0; text-align:center; z-index:15;
+      .logo {{ position:absolute; top:158px; left:0; right:0; text-align:center; z-index:15;
                font-family:'Press Start 2P',monospace; color:#ffb627; animation:glowpulse 2.6s ease-in-out infinite; }}
       .logo .l1 {{ font-size:40px; display:block; letter-spacing:3px; }}
       .logo .l2 {{ font-size:40px; display:block; letter-spacing:3px; margin-top:13px; color:#3ff2e0;
@@ -1290,15 +1691,13 @@ def scene_attract(seed: int) -> str:
              font-size:9px; color:#5a6486; letter-spacing:.14em; }}
       .by b {{ color:#ffb627; }}
       .sci {{ position:absolute; bottom:44px; left:47%; width:36px; z-index:8; animation:idle 2.3s ease-in-out infinite; }}
-      .board {{ position:absolute; top:130px; left:3%; width:190px; height:96px; z-index:2;
-                background:rgba(232,236,245,.10); border:3px solid #6b7a8a; }}
+      .board {{ display:none; }}
     </style>
     <div class="lamp" style="left:3%;width:28%"></div>
     <div class="lamp" style="left:36%;width:28%"></div>
     <div class="lamp" style="left:69%;width:28%"></div>
-    {ocean_window("36%", 118, 240, 150)}
-    {ocean_window("62%", 118, 190, 150)}
-    <div class="board"></div>
+    {ocean_window("4%", 150, 250, 168)}
+    {ocean_window("76%", 150, 250, 168)}
     <div class="shelf" style="top:250px;left:2%;width:26%"></div>
     <div class="shelf" style="top:250px;left:76%;width:22%"></div>
     <div style="position:absolute;left:2%;right:2%;bottom:66px;height:9px;background:#2b3358;
@@ -1565,7 +1964,7 @@ def room_decor(room: Room) -> List[dict]:
     faint = _hex_rgba(a, 0.13)
     fainter = _hex_rgba(a, 0.07)
     d: List[dict] = []
-    k = room.critter
+    k = room.critter.split(",")[0].strip()
     rng = random.Random(len(room.key))
 
     if k == "bubble" or k == "fish":
