@@ -148,7 +148,6 @@ class LevelSpec:
     time_limit: int = 0       # 0 = untimed
     sudden_death: bool = False
     hide_labels: bool = False  # frost: slot numbers iced over
-    flicker: bool = False      # unused, kept so old specs still construct
     extra_tubes: int = 0       # decoys in the tray that you do not have to use
     gimmick: str = ""          # banner shown to the player
 
@@ -178,7 +177,6 @@ ULTRA_SPEC = LevelSpec(
     style=1, time_limit=45, sudden_death=True,
 )
 
-ACC_POINTS = 600           # legacy, kept for reference
 CLEAN_POINTS = 400         # flat award for a clean spin
 TIME_POINTS = 400
 STREAK_STEP = 0.2          # multiplier gained per consecutive clean spin
@@ -1190,105 +1188,6 @@ PROP_BUILDERS = {
 }
 
 
-def bench_kit(room: Room, seed: int) -> str:
-    """Centrifuge kit every lab has. Everything either sits on a real shelf,
-    hangs from a wall hook, or rests on the floor -- nothing floats."""
-    rng = random.Random(seed * 31 + 7)
-    a = room.accent
-    SHELF_Y = 108          # distance from the top of the stage to the shelf surface
-    out = []
-
-    # two utility shelves, left and right, clear of the room's own fixtures
-    for sx, sw in ((3, 26), (71, 26)):
-        out.append(
-            f'<div style="position:absolute;left:{sx}%;width:{sw}%;top:{SHELF_Y}px;height:7px;'
-            f'background:#4a5580;border-top:2px solid #6b7a8a;z-index:6"></div>')
-        for br in (0.12, 0.82):
-            out.append(
-                f'<div style="position:absolute;left:calc({sx}% + {sw*br:.1f}%);top:{SHELF_Y+7}px;'
-                f'width:6px;height:16px;background:#3a4258;z-index:6"></div>')
-
-    def on_shelf(left_pct: str, h: int, w: int, body: str) -> str:
-        """Place an object standing on the shelf surface."""
-        return (f'<div style="position:absolute;left:{left_pct};top:{SHELF_Y - h}px;'
-                f'width:{w}px;height:{h}px;z-index:7">{body}</div>')
-
-    # tube rack, on the left shelf
-    cols = [CYAN, GREEN, AMBER, MAGENTA, "#c86bff"]
-    tubes = "".join(
-        f'<div style="position:absolute;left:{4+j*8}px;bottom:5px;width:6px;'
-        f'height:{12+(j%3)*4}px;background:{rng.choice(cols)};opacity:.9;'
-        f'border-radius:0 0 3px 3px"></div>' for j in range(6))
-    out.append(on_shelf("5%", 30, 56,
-                        f'<div style="position:absolute;bottom:0;left:0;right:0;height:6px;'
-                        f'background:#39405f;border-radius:2px"></div>{tubes}'))
-
-    # analytical balance, on the left shelf
-    out.append(on_shelf("14%", 34, 62,
-                        f'<div style="position:absolute;bottom:0;left:0;right:0;height:22px;'
-                        f'background:#2b3358;border:2px solid #6b7a8a;border-radius:3px"></div>'
-                        f'<div style="position:absolute;bottom:20px;left:9px;width:44px;height:7px;'
-                        f'background:#8a97ab;border-radius:2px"></div>'
-                        f'<div style="position:absolute;bottom:4px;left:7px;width:46px;height:13px;'
-                        f'background:#05100f;border:1px solid {a};font-family:monospace;font-size:8px;'
-                        f'color:{a};text-align:center;line-height:13px">'
-                        f'{rng.choice(["1.50","2.00","15.0","4.98"])} g</div>'))
-
-    # bench timer, on the right shelf
-    out.append(on_shelf("73%", 30, 46,
-                        f'<div style="position:absolute;bottom:0;left:0;right:0;height:30px;'
-                        f'background:#1a1f30;border:2px solid #6b7a8a;border-radius:3px;'
-                        f'font-family:monospace;font-size:11px;color:{MAGENTA};text-align:center;'
-                        f'line-height:30px">{rng.randint(0,9)}:{rng.randint(10,59)}</div>'))
-
-    # ice bucket with tubes, on the right shelf
-    ice = "".join(
-        f'<div style="position:absolute;bottom:18px;left:{7+j*10}px;width:6px;height:15px;'
-        f'background:{rng.choice([CYAN, GREEN, "#dcecff"])};opacity:.9;'
-        f'border-radius:0 0 3px 3px"></div>' for j in range(4))
-    out.append(on_shelf("81%", 36, 54,
-                        f'{ice}<div style="position:absolute;bottom:0;left:0;width:54px;height:22px;'
-                        f'background:#dfeef7;opacity:.4;border:2px solid #8a97ab;'
-                        f'border-radius:3px 3px 6px 6px"></div>'))
-
-    # spare rotor, hung on a wall hook above the left shelf
-    holes = "".join(
-        f'<div style="position:absolute;left:{29 + 22*math.cos(j*math.pi/6):.1f}px;'
-        f'top:{29 + 22*math.sin(j*math.pi/6):.1f}px;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;'
-        f'border-radius:50%;background:#06070d;border:1px solid {a};opacity:.85"></div>'
-        for j in range(12))
-    out.append(
-        f'<div style="position:absolute;left:6%;top:22px;width:3px;height:14px;'
-        f'background:#6b7a8a;z-index:6"></div>'
-        f'<div style="position:absolute;left:4%;top:34px;width:60px;height:60px;z-index:6;'
-        f'border-radius:50%;background:rgba(255,255,255,.09);border:3px solid {a};opacity:.92">'
-        f'{holes}<div style="position:absolute;left:50%;top:50%;width:13px;height:13px;'
-        f'margin:-6.5px 0 0 -6.5px;border-radius:50%;background:#06070d;border:2px solid {a}"></div></div>')
-
-    # safety poster, flush on the wall above the right shelf
-    out.append(
-        f'<div style="position:absolute;left:88%;top:26px;width:92px;height:70px;z-index:6;'
-        f'background:rgba(0,0,0,.45);border:2px solid {a};padding:5px;'
-        f'font-family:\'Press Start 2P\',monospace;font-size:6px;color:{a};line-height:1.9;'
-        f'text-align:center">BALANCE<br>YOUR<br>ROTOR'
-        f'<div style="margin-top:3px;font-size:5px;opacity:.55">SAFETY OFFICE</div></div>')
-
-    # sharps bin, standing on the floor
-    out.append(
-        f'<div style="position:absolute;left:{rng.choice([1,95])}%;bottom:34px;width:36px;height:44px;'
-        f'z-index:5;background:#b8352f;border:2px solid #e0574f;border-radius:3px;opacity:.9">'
-        f'<div style="position:absolute;top:4px;left:5px;right:5px;height:7px;background:#6d1c18"></div>'
-        f'<div style="position:absolute;bottom:4px;left:0;right:0;text-align:center;'
-        f'font-family:monospace;font-size:6px;color:#ffdede">SHARPS</div></div>')
-
-    # a couple of tubes lying on the floor
-    for _ in range(rng.randint(1, 2)):
-        out.append(
-            f'<div style="position:absolute;bottom:{rng.randint(8,24)}px;left:{rng.randint(30,66)}%;'
-            f'width:14px;height:5px;border-radius:3px;background:{rng.choice([CYAN, GREEN, AMBER])};'
-            f'opacity:.8;z-index:5;transform:rotate({rng.randint(-25,25)}deg)"></div>')
-    return "".join(out)
-
 def prop_wall(room: Room, seed: int) -> str:
     rng = random.Random(seed)
     # Deliberately no generic "bench kit" here: shared clutter competed with each
@@ -1770,14 +1669,6 @@ def room_background_css(room_key: str) -> str:
   background-attachment: fixed;
   background-repeat: no-repeat;
 }}
-</style>
-"""
-
-
-FLICKER_CSS = """
-<style>
-@keyframes powercut { 0%,86%,100%{opacity:1} 88%{opacity:.28} 90%{opacity:1} 92%{opacity:.15} 94%{opacity:1} }
-.block-container { animation: powercut 4.5s steps(1) infinite; }
 </style>
 """
 
@@ -2474,14 +2365,19 @@ def rotor_figure(spec: LevelSpec, room: Room, base, player, blocked: Set[int],
                        line=dict(color=z.plate_edge, width=2), fillcolor="#06070d", layer="below"))
 
     pal = palette()
+    cb = bool(st.session_state.get("cb"))
+    # Colour alone separates locked from placed in the normal palette, so both stay
+    # round. Colourblind mode switches placed tubes to a diamond so shape carries
+    # the meaning when the two hues are hard to tell apart.
+    player_symbol = "diamond" if cb else "circle"
     xs, ys, colors, sizes, lines, hover, syms = [], [], [], [], [], [], []
     for i in range(n):
         x, y = slot_xy(i, n, 1.0)
         xs.append(x); ys.append(y)
         m = loads[i]
         if i in blocked:
-            colors.append("rgba(0,0,0,0.10)"); sizes.append(20)
-            lines.append(pal["blocked"]); syms.append("x-thin")
+            colors.append(pal["blocked"]); sizes.append(19)
+            lines.append(pal["blocked"]); syms.append("x")
             hover.append(f"{i} · cracked bucket")
         elif m is None:
             colors.append("rgba(6,7,13,0.85)"); sizes.append(20)
@@ -2492,8 +2388,8 @@ def rotor_figure(spec: LevelSpec, room: Room, base, player, blocked: Set[int],
             lines.append("#04121f"); syms.append("circle")
             hover.append(f"{i} · locked {m:g} g")
         else:
-            colors.append(pal["player"]); sizes.append(tube_size(m) * 1.05)
-            lines.append("#2a1a00"); syms.append("diamond")
+            colors.append(pal["player"]); sizes.append(tube_size(m))
+            lines.append("#2a1a00" if cb else "#062a28"); syms.append(player_symbol)
             hover.append(f"{i} · yours {m:g} g — click to lift")
 
     fig.add_trace(go.Scatter(
@@ -2649,7 +2545,6 @@ def init_state():
     ss.setdefault("in_ultra", False)
     ss.setdefault("nonce", 0)
     ss.setdefault("pick", 0)
-    ss.setdefault("total_to_place", 1)
     ss.setdefault("required", 1)
     ss.setdefault("streak", 0)
     ss.setdefault("best_streak", 0)
@@ -2694,7 +2589,6 @@ def load_level(spec: LevelSpec, keep_fails: bool = False):
         hand.sort(reverse=True)
     ss.base, ss.blocked, ss.hand = base, blocked, hand
     ss.required = spec.to_place
-    ss.total_to_place = spec.to_place
     ss.player = [None] * spec.slots
     ss.pick = 0
     if not keep_fails:
@@ -2789,10 +2683,10 @@ def screen_title():
             Click a rotor position to seat the selected tube. Click your own tube to lift it out.
             The <span style="color:{MAGENTA}">magenta needle</span> shows where the rotor is pulling &mdash;
             shrink it to nothing, close the lid, walk to the next machine.<br>
-            <span style="color:{palette()['locked']}">&#9679; round</span> = locked in already
+            <span style="color:{palette()['locked']}">&#9679;</span> = locked in already
             &nbsp;&middot;&nbsp;
-            <span style="color:{palette()['player']}">&#9670; diamond</span> = yours
-            &nbsp;&middot;&nbsp;
+            <span style="color:{palette()['player']}">{'&#9670; diamond' if ss.cb else '&#9679;'}</span>
+            = yours &nbsp;&middot;&nbsp;
             <span style="color:{palette()['blocked']}">&#10006;</span> = cracked bucket, unusable<br>
             <span class="cc-amber">3 lives.</span> Spin unbalanced and one is gone.
             If the PA calls you to Suite 3, there are no lives in there.
@@ -2858,7 +2752,6 @@ def screen_play():
     required = ss.get("required", spec.to_place)
     seated = sum(1 for i in range(spec.slots) if ss.player[i] is not None)
     ready = seated >= required
-    total = required
 
     if spec.time_limit and time.time() - ss.level_start > spec.time_limit:
         ss.streak = 0
@@ -2866,8 +2759,6 @@ def screen_play():
         play("alarm"); ss.phase = "explode"; st.rerun()
 
     st.markdown(room_background_css(room.key), unsafe_allow_html=True)
-    if spec.flicker:
-        st.markdown(FLICKER_CSS, unsafe_allow_html=True)
 
     header = (f'<div class="cc-strip" style="color:#ff3d8b">{spec.name} &nbsp;&middot;&nbsp; {spec.subtitle}</div>'
               if spec.sudden_death else
