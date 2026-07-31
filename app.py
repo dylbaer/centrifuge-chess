@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import inspect
 import io
+import uuid
 import json
 import math
 import os
@@ -43,6 +44,18 @@ def _wide(fn) -> dict:
 
 BTN = _wide(st.button)
 FIG = _wide(st.plotly_chart)
+
+
+def html_block(markup: str, height: int):
+    """st.components.v1.html is deprecated. Keep using it while it exists, and fall
+    back to an iframe with a data URI if a future Streamlit release removes it, so
+    the game does not go blank on an upgrade."""
+    fn = getattr(components, "html", None)
+    if fn is not None:
+        fn(markup, height=height)
+        return
+    b64 = base64.b64encode(markup.encode("utf-8")).decode("ascii")
+    st.iframe("data:text/html;charset=utf-8;base64," + b64, height=height)
 
 AMBER = "#ffb627"
 CYAN = "#3ff2e0"
@@ -1977,7 +1990,7 @@ def scene_fire(seed: int) -> str:
     return scene_shell(300, SUITE3, inner)
 
 
-def scene_department(seed: int) -> str:
+def scene_department(seed: int, arriving: bool = False) -> str:
     """The Department -- AAV vector core, end of shift, morale event under way."""
     rng = random.Random(seed)
     a, viol = "#c86bff", "#c86bff"
@@ -2167,8 +2180,47 @@ def scene_department(seed: int) -> str:
         f'animation:notesup {rng.uniform(3.0,5.4):.1f}s linear {rng.uniform(0,3):.1f}s infinite">'
         f'{rng.choice(["&#9834;","&#9835;","&#9838;"])}</div>' for _ in range(10))
 
+    # ---------- finale: the scientist walks in and the room notices ----------
+    arrival = ""
+    if arriving:
+        confetti = "".join(
+            f'<div style="position:absolute;left:{rng.randint(0,99)}%;top:-20px;'
+            f'width:{rng.randint(5,10)}px;height:{rng.randint(8,15)}px;z-index:14;'
+            f'background:{rng.choice(["#ff3d8b","#3ff2e0","#ffb627","#5be36a","#c86bff","#ffffff"])};'
+            f'animation:confetti {rng.uniform(2.4,4.6):.1f}s linear {rng.uniform(0,2.6):.1f}s infinite"></div>'
+            for _ in range(46))
+        arrival = (
+            confetti +
+            f'<div class="arrive-sci"><div style="position:relative;width:40px;height:88px">'
+            f'<div style="position:absolute;top:0;left:10px;width:20px;height:18px;background:#f0d2b4;'
+            f'border-radius:5px 5px 4px 4px"></div>'
+            f'<div style="position:absolute;top:5px;left:8px;width:24px;height:7px;background:{a};'
+            f'border:1px solid #10142a;border-radius:3px"></div>'
+            f'<div style="position:absolute;top:18px;left:3px;width:34px;height:40px;background:#f4f6ff;'
+            f'border:1px solid #b9bfd8;border-radius:4px 4px 2px 2px"></div>'
+            f'<div style="position:absolute;top:22px;left:-4px;width:8px;height:24px;background:#f4f6ff;'
+            f'border:1px solid #b9bfd8;border-radius:4px;transform-origin:top center;'
+            f'animation:armswing .5s ease-in-out infinite alternate"></div>'
+            f'<div style="position:absolute;top:22px;right:-4px;width:8px;height:24px;background:#f4f6ff;'
+            f'border:1px solid #b9bfd8;border-radius:4px;transform-origin:top center;'
+            f'animation:armswing .5s ease-in-out infinite alternate-reverse"></div>'
+            f'<div style="position:absolute;top:58px;left:8px;width:9px;height:22px;background:#2b3358"></div>'
+            f'<div style="position:absolute;top:58px;left:23px;width:9px;height:22px;background:#2b3358"></div>'
+            f'</div></div>'
+            f'<div class="cheer">SHIFT OVER!</div>')
+
     inner = f"""
     <style>
+      @keyframes confetti {{ to {{ transform:translateY(430px) rotate(680deg); opacity:.15 }} }}
+      @keyframes walkin {{ 0%{{left:-8%}} 55%{{left:44%}} 100%{{left:47%}} }}
+      @keyframes cheerin {{ 0%,40%{{opacity:0;transform:scale(.5)}} 60%{{opacity:1;transform:scale(1.12)}}
+                            70%,100%{{opacity:1;transform:scale(1)}} }}
+      .arrive-sci {{ position:absolute; bottom:{BENCH_TOP-96}px; width:40px; z-index:13;
+                     animation:walkin 2.6s cubic-bezier(.4,0,.4,1) forwards,
+                               bobdance 1.6s ease-in-out 2.6s infinite; }}
+      .cheer {{ position:absolute; left:0; right:0; top:172px; text-align:center; z-index:14;
+                font-family:'Press Start 2P',monospace; font-size:19px; color:#ffb627;
+                text-shadow:0 0 20px #ffb627; animation:cheerin 3.2s ease-out forwards; }}
       @keyframes spinball {{ to {{ transform:rotate(360deg) }} }}
       @keyframes beam3 {{ from {{ opacity:.14 }} to {{ opacity:.40 }} }}
       @keyframes blinklight {{ 0%,49%{{opacity:1}} 50%,100%{{opacity:.22}} }}
@@ -2190,7 +2242,7 @@ def scene_department(seed: int) -> str:
     </style>
     {beams}{ball}{lights}
     {"".join(out)}
-    {notes}
+    {notes}{arrival}
     <div class="deptsign">THE DEPARTMENT<br><span style="opacity:.65">AAV VECTOR CORE</span></div>
     <div class="thanks">THANK YOU FOR<br>CHOOSING THE DEPARTMENT</div>
     """
@@ -2447,6 +2499,79 @@ def rotor_figure(spec: LevelSpec, room: Room, base, player, blocked: Set[int],
 # 8. LEADERBOARD
 # ==========================================================================
 LOCAL_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "leaderboard.json")
+RUNS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".runs")
+RESUME_WINDOW = 6 * 3600      # seconds a dropped run stays resumable
+
+# Streamlit drops idle websockets, and a reconnect starts a brand-new session with
+# empty state -- which lands the player back on the title screen mid-run. The last
+# level has by far the largest search space, so it is where people sit longest and
+# where this bites. Snapshotting the run makes that recoverable.
+SNAP_KEYS = ["name", "level", "in_ultra", "ultra_count", "lives", "scores", "fails",
+             "streak", "best_streak", "seed", "daily", "required", "cb", "muted"]
+
+
+def save_snapshot():
+    ss = st.session_state
+    rid = ss.get("run_id")
+    if not rid or "base" not in ss:
+        return
+    data = {k: ss.get(k) for k in SNAP_KEYS}
+    data["base"] = list(ss.base)
+    data["blocked"] = sorted(int(b) for b in ss.blocked)
+    data["hand"] = list(ss.hand)
+    data["player"] = list(ss.player)
+    data["elapsed"] = time.time() - ss.get("level_start", time.time())
+    data["played"] = time.time() - ss.get("game_start", time.time())
+    data["saved_at"] = time.time()
+    try:
+        os.makedirs(RUNS_DIR, exist_ok=True)
+        with open(os.path.join(RUNS_DIR, f"{rid}.json"), "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+    except Exception:
+        pass
+
+
+def read_snapshot(run_id: str) -> Optional[dict]:
+    try:
+        with open(os.path.join(RUNS_DIR, f"{run_id}.json"), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if time.time() - data.get("saved_at", 0) > RESUME_WINDOW:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def drop_snapshot():
+    rid = st.session_state.get("run_id")
+    if not rid:
+        return
+    try:
+        os.remove(os.path.join(RUNS_DIR, f"{rid}.json"))
+    except Exception:
+        pass
+
+
+def restore_snapshot(run_id: str, data: dict):
+    ss = st.session_state
+    for k in SNAP_KEYS:
+        ss[k] = data.get(k)
+    ss.base = data["base"]
+    ss.blocked = set(data["blocked"])
+    ss.hand = list(data["hand"])
+    ss.player = list(data["player"])
+    ss.run_id = run_id
+    ss.submitted = False
+    ss.burned = False
+    ss.partied = False
+    # give the player a moment back rather than resuming a timer that already expired
+    ss.level_start = time.time() - min(data.get("elapsed", 0), 20)
+    ss.game_start = time.time() - data.get("played", 0)
+    if ss.get("daily"):
+        ss.daily_spec = daily_spec()
+        ss.daily_room = daily_room()
+    ss.nonce = ss.get("nonce", 0) + 1
+    ss.phase = "play"
 WORKSHEET = "scores"
 WORKSHEET_DAILY = "daily"
 COLUMNS = ["name", "score", "levels", "seconds", "when"]
@@ -2550,6 +2675,7 @@ def init_state():
     ss.setdefault("best_streak", 0)
     ss.setdefault("daily", False)
     ss.setdefault("cb", False)
+    ss.setdefault("run_id", "")
     ss.setdefault("seed", random.randint(0, 9999))
     ss.setdefault("submitted", False)
     ss.setdefault("muted", False)
@@ -2595,6 +2721,7 @@ def load_level(spec: LevelSpec, keep_fails: bool = False):
         ss.fails = 0
     ss.nonce += 1
     ss.level_start = time.time()
+    save_snapshot()
 
 
 def reset_game():
@@ -2617,7 +2744,7 @@ def finish_run(reason: str, burned: bool):
 def screen_title():
     ss = st.session_state
     st.markdown(room_background_css("lobby"), unsafe_allow_html=True)
-    components.html(scene_attract(ss.seed), height=452)
+    html_block(scene_attract(ss.seed), height=452)
 
     c1, c2, c5, c3, c4 = st.columns([2, 1.3, 1.3, 1.3, 1.3])
     with c1:
@@ -2631,6 +2758,8 @@ def screen_title():
             ss.ultra_count, ss.in_ultra = 0, False
             ss.submitted, ss.burned = False, False
             ss.streak, ss.best_streak = 0, 0
+            ss.run_id = uuid.uuid4().hex[:12]
+            st.query_params["run"] = ss.run_id
             ss.daily = False
             ss.seed = random.randint(0, 9999)
             ss.game_start = time.time()
@@ -2645,6 +2774,8 @@ def screen_title():
             ss.ultra_count, ss.in_ultra = 0, False
             ss.submitted, ss.burned = False, False
             ss.streak, ss.best_streak = 0, 0
+            ss.run_id = uuid.uuid4().hex[:12]
+            st.query_params["run"] = ss.run_id
             ss.daily = True
             ss.daily_spec = daily_spec()
             ss.daily_room = daily_room()
@@ -2667,6 +2798,26 @@ def screen_title():
         if st.button("COLORBLIND: ON" if ss.cb else "COLORBLIND: OFF", **BTN):
             ss.cb = not ss.cb
             st.rerun()
+
+    pending = None
+    try:
+        rid = st.query_params.get("run")
+        if rid and not ss.get("run_id"):
+            pending = read_snapshot(rid)
+    except Exception:
+        pending = None
+    if pending:
+        lv = int(pending.get("level", 0)) + 1
+        st.markdown(
+            f'<div class="cc-gimmick" style="color:{palette()["player"]};'
+            f'border-color:{palette()["player"]};background:rgba(230,159,0,.10)">'
+            f'INTERRUPTED RUN FOUND &mdash; {pending.get("name","?")} on level {lv}, '
+            f'{sum(pending.get("scores") or [])} points</div>', unsafe_allow_html=True)
+        r1, _ = st.columns([2, 4.9])
+        with r1:
+            if st.button(f"RESUME LEVEL {lv}", type="primary", **BTN):
+                restore_snapshot(rid, pending)
+                st.rerun()
 
     d1, d2 = st.columns([2, 4.9])
     with d1:
@@ -2701,7 +2852,7 @@ def screen_intro():
                 f'&nbsp;&middot;&nbsp; {spec.subtitle}</div>', unsafe_allow_html=True)
     st.markdown(room_background_css(room.key), unsafe_allow_html=True)
     st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
-    components.html(scene_transit(room, spec.zone, ss.level, ss.seed + ss.level,
+    html_block(scene_transit(room, spec.zone, ss.level, ss.seed + ss.level,
                                   label=("DAILY CHALLENGE" if ss.get("daily")
                                          else f"LEVEL {ss.level+1}")), height=330)
     time.sleep(4.3)
@@ -2716,7 +2867,7 @@ def screen_ultra_intro():
                 unsafe_allow_html=True)
     st.markdown(room_background_css("suite3"), unsafe_allow_html=True)
     st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
-    components.html(scene_ultra_alert(), height=280)
+    html_block(scene_ultra_alert(), height=280)
     time.sleep(3.0)
     ss.phase = "play"
     ss.level_start = time.time()
@@ -2765,6 +2916,7 @@ def screen_play():
               f'<div class="cc-strip">{room.name} &nbsp;&middot;&nbsp; {spec.name} '
               f'&nbsp;&middot;&nbsp; {spec.subtitle}</div>')
     st.markdown(header, unsafe_allow_html=True)
+    save_snapshot()
     if ss.get("daily"):
         st.markdown(f'<div class="cc-strip" style="color:{palette()["player"]};font-size:.55rem">'
                     f'DAILY CHALLENGE &middot; {time.strftime("%Y-%m-%d")} &middot; '
@@ -2819,7 +2971,7 @@ def screen_play():
 
         if spec.time_limit:
             left_s = max(0, spec.time_limit - (time.time() - ss.level_start))
-            components.html(countdown_html(left_s), height=52)
+            html_block(countdown_html(left_s), height=52)
 
         # ---- tube tray: make multi-tube levels unmistakable ----
         word = "TUBE" if required == 1 else "TUBES"
@@ -2914,7 +3066,7 @@ def screen_spin():
     st.markdown('<div class="cc-strip">SPINNING UP</div>', unsafe_allow_html=True)
     st.markdown(room_background_css(current_room().key), unsafe_allow_html=True)
     st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
-    components.html(scene_spin(spec.zone, current_room(), spec.slots), height=280)
+    html_block(scene_spin(spec.zone, current_room(), spec.slots), height=280)
     time.sleep(2.0)
 
     if resid > tol:
@@ -2950,7 +3102,7 @@ def screen_explode():
                 unsafe_allow_html=True)
     play_now("boom")
     st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
-    components.html(scene_explode(current_room(), lethal), height=280)
+    html_block(scene_explode(current_room(), lethal), height=280)
     time.sleep(2.7)
 
     if spec.sudden_death:
@@ -3048,11 +3200,19 @@ def screen_result():
 def screen_burn():
     ss = st.session_state
     st.markdown('<div class="cc-strip" style="color:#ffca6b">SHIFT OVER</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
+    stage = st.empty()
     if ss.burned:
         play_now("over")
-        st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
-        components.html(scene_fire(ss.seed), height=300)
+        with stage.container():
+            html_block(scene_fire(ss.seed), height=300)
         time.sleep(3.0)
+    # however the shift ended, everyone winds up at The Department
+    play_now("party")
+    ss.partied = True
+    with stage.container():
+        html_block(scene_department(ss.seed, arriving=True), height=404)
+    time.sleep(4.4)
     ss.phase = "gameover"
     st.rerun()
 
@@ -3075,6 +3235,7 @@ def screen_gameover():
         f'<div><span class="k">SHIFT TIME</span>{shift//60}:{shift%60:02d}</div>'
         f'</div></div>', unsafe_allow_html=True)
 
+    drop_snapshot()
     if not ss.submitted:
         save_score({"name": ss.name, "score": total, "levels": len(ss.scores),
                     "seconds": shift, "when": time.strftime("%Y-%m-%d")},
@@ -3106,7 +3267,7 @@ def screen_gameover():
     if not ss.get("partied"):
         play_now("party")
         ss.partied = True
-    components.html(scene_department(ss.seed), height=404)
+    html_block(scene_department(ss.seed), height=404)
 
 
 def screen_scores_only():
