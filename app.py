@@ -148,7 +148,8 @@ class LevelSpec:
     time_limit: int = 0       # 0 = untimed
     sudden_death: bool = False
     hide_labels: bool = False  # frost: slot numbers iced over
-    flicker: bool = False      # failing power: lights and needle cut out
+    flicker: bool = False      # unused, kept so old specs still construct
+    spill: bool = False        # someone knocks the bench mid-level
     gimmick: str = ""          # banner shown to the player
 
 
@@ -159,7 +160,7 @@ LEVELS: List[LevelSpec] = [
     LevelSpec("BENCHTOP 16", "one bucket is cracked", 16, 8, 2, 2, (1.5, 2.0), 0.50, 55, CORE, 1),
     LevelSpec("BENCHTOP 18", "thirds, not halves", 18, 9, 2, 2, (1.5, 2.0, 5.0), 0.50, 65, CORE, 2),
     LevelSpec("SWING-24", "swinging bucket rotor", 24, 12, 3, 3, (1.5, 2.0, 5.0), 0.50, 75, CORE, 1,
-              flicker=True, gimmick="POWER FLICKER \u2014 the lights keep going"),
+              spill=True, gimmick="LOOSE BENCH \u2014 a cart is coming through"),
     LevelSpec("CLINICAL-20", "no thirds on this one", 20, 10, 3, 4, (2.0, 5.0, 15.0), 0.48, 80, CORE, 0,
               time_limit=60, gimmick="FIRE DRILL \u2014 60 seconds, then everyone leaves"),
     LevelSpec("SWING-24 HD", "15 mL conicals", 24, 12, 3, 5, (2.0, 5.0, 15.0), 0.45, 80, COLD, 1,
@@ -357,6 +358,19 @@ def sfx_library() -> Dict[str, np.ndarray]:
     for f in (523, 415, 330, 220, 165):
         a.append(0.26 * _square(f, seg, 0.4) * np.exp(-5 * seg))
     lib["over"] = (np.concatenate(a))
+
+    # end-of-shift party loop for The Department
+    beat = _t(0.20)
+    melody = [659, 784, 880, 784, 659, 587, 523, 587,
+              659, 784, 880, 988, 880, 784, 659, 523]
+    bass = [131, 131, 165, 165, 196, 196, 165, 165]
+    lead = np.concatenate([0.15 * _square(f, beat, 0.25) *
+                           np.minimum(1, (beat[-1] - beat) * 12) for f in melody])
+    low = np.concatenate([0.13 * _square(f, _t(0.40), 0.5) *
+                          np.minimum(1, (0.40 - _t(0.40)) * 6) for f in bass])
+    n = min(lead.size, low.size)
+    track = lead[:n] + low[:n]
+    lib["party"] = np.tile(track, 2)
     return lib
 
 
@@ -401,19 +415,19 @@ GLOBAL_CSS = """
 [data-testid="stAudio"] { position: fixed; left: -9999px; width: 1px; height: 1px; }
 
 .block-container {
-    padding-top: 0.5rem !important; padding-bottom: 1.2rem !important;
+    padding-top: 0.35rem !important; padding-bottom: 0.8rem !important;
     padding-left: 2rem !important; padding-right: 2rem !important;
-    max-width: 1600px !important;
+    max-width: 1500px !important;
 }
 .stApp { background: #06070d; color: #e8e6f0; }
 h1, h2, h3 { font-family: 'Press Start 2P', monospace !important; }
 body, p, li, div[data-testid="stMarkdownContainer"] { font-family: 'IBM Plex Mono', monospace; }
-[data-testid="stVerticalBlock"] { gap: 0.55rem; }
+[data-testid="stVerticalBlock"] { gap: 0.35rem; }
 
-.cc-strip { font-family:'Press Start 2P',monospace; font-size:0.68rem; color:#ffb627;
-            text-align:center; letter-spacing:0.05em; padding:0.3rem 0; margin-bottom:0.35rem; }
+.cc-strip { font-family:'Press Start 2P',monospace; font-size:0.62rem; color:#ffb627;
+            text-align:center; letter-spacing:0.05em; padding:0.15rem 0; margin-bottom:0.25rem; }
 .cc-panel { background:rgba(12,16,34,0.88); border:2px solid #2b3358; border-radius:4px;
-            padding:0.7rem 0.9rem; margin-bottom:0.55rem; }
+            padding:0.5rem 0.8rem; margin-bottom:0.4rem; }
 .cc-hud { display:flex; justify-content:space-between; gap:0.35rem;
           font-family:'Press Start 2P',monospace; font-size:0.6rem; color:#ffb627; }
 .cc-hud span.k { color:#5a6486; display:block; margin-bottom:5px; font-size:0.5rem; }
@@ -422,11 +436,11 @@ body, p, li, div[data-testid="stMarkdownContainer"] { font-family: 'IBM Plex Mon
 .cc-ok { color:#5be36a; } .cc-bad { color:#ff3d8b; } .cc-amber { color:#ffb627; }
 
 /* --- tube tray --- */
-.tray-banner { font-family:'Press Start 2P',monospace; font-size:0.72rem; text-align:center;
-               padding:0.5rem 0.3rem; border-radius:3px; margin-bottom:0.45rem; line-height:1.7; }
+.tray-banner { font-family:'Press Start 2P',monospace; font-size:0.64rem; text-align:center;
+               padding:0.38rem 0.3rem; border-radius:3px; margin-bottom:0.35rem; line-height:1.6; }
 .tray-need { background:rgba(255,182,39,0.13); border:2px solid #ffb627; color:#ffb627; }
 .tray-done { background:rgba(91,227,106,0.13); border:2px solid #5be36a; color:#5be36a; }
-.pips { text-align:center; font-size:1.35rem; letter-spacing:0.32rem; margin:0.1rem 0 0.4rem 0; }
+.pips { text-align:center; font-size:1.1rem; letter-spacing:0.28rem; margin:0.05rem 0 0.3rem 0; }
 .cc-gimmick { font-family:'Press Start 2P',monospace; font-size:0.62rem; color:#ff3d8b;
               text-align:center; letter-spacing:.06em; border:2px solid #ff3d8b;
               background:rgba(255,61,139,.10); border-radius:3px; padding:0.5rem;
@@ -434,6 +448,12 @@ body, p, li, div[data-testid="stMarkdownContainer"] { font-family: 'IBM Plex Mon
               animation:gpulse 1.6s ease-in-out infinite; }
 @keyframes gpulse { 50% { opacity:.62; } }
 .cc-centre { text-align:center; }
+/* During blocking animations Streamlit keeps the previous screen on the page.
+   This drops an opaque sheet over it and lifts the animation above. */
+.cc-blackout { position:fixed; inset:0; background:#06070d; z-index:500; }
+.cc-lift, .cc-lift * { position:relative; z-index:900; }
+[data-testid="stCustomComponentV1"], iframe { position:relative; z-index:900; }
+.element-container:has(iframe) { position:relative; z-index:900; }
 .pip-done { color:#3ff2e0; } .pip-todo { color:#39405f; }
 
 .stButton > button { font-family:'IBM Plex Mono',monospace !important; font-weight:600;
@@ -1123,9 +1143,99 @@ PROP_BUILDERS = {
 }
 
 
+def bench_kit(room: Room, rng: random.Random) -> str:
+    """Centrifuge-adjacent clutter every lab has. Sits in the ceiling band and
+    far corners so it never collides with a room's signature fixtures."""
+    a = room.accent
+    out = []
+
+    # spare rotor hung on the wall — holes and all
+    rx = rng.choice([6, 12, 84, 90])
+    holes = "".join(
+        f'<div style="position:absolute;left:{31 + 24*math.cos(j*math.pi/6):.1f}px;'
+        f'top:{31 + 24*math.sin(j*math.pi/6):.1f}px;width:8px;height:8px;margin:-4px 0 0 -4px;'
+        f'border-radius:50%;background:#06070d;border:1px solid {a};opacity:.85"></div>'
+        for j in range(12))
+    out.append(
+        f'<div style="position:absolute;left:{rx}%;top:14px;width:66px;height:66px;z-index:6;'
+        f'border-radius:50%;background:rgba(255,255,255,.10);border:3px solid {a};opacity:.9">'
+        f'{holes}<div style="position:absolute;left:50%;top:50%;width:14px;height:14px;'
+        f'margin:-7px 0 0 -7px;border-radius:50%;background:#06070d;border:2px solid {a}"></div></div>')
+
+    # safety poster
+    px = rng.choice([22, 30, 66, 74])
+    out.append(
+        f'<div style="position:absolute;left:{px}%;top:12px;width:96px;height:72px;z-index:6;'
+        f'background:rgba(0,0,0,.45);border:2px solid {a};padding:5px;'
+        f'font-family:\'Press Start 2P\',monospace;font-size:6px;color:{a};line-height:1.9;'
+        f'text-align:center">BALANCE<br>YOUR<br>ROTOR'
+        f'<div style="margin-top:4px;font-size:5px;opacity:.6">SAFETY OFFICE</div></div>')
+
+    # tube racks on the upper shelf
+    for k in range(2):
+        x = rng.randint(38, 58) + k * 5
+        cols = [CYAN, GREEN, AMBER, MAGENTA, "#c86bff"]
+        tubes = "".join(
+            f'<div style="position:absolute;left:{4+j*8}px;bottom:5px;width:6px;'
+            f'height:{13+(j%3)*4}px;background:{rng.choice(cols)};opacity:.9;border-radius:0 0 3px 3px"></div>'
+            for j in range(6))
+        out.append(
+            f'<div style="position:absolute;left:{x}%;top:{22+k*34}px;width:56px;height:30px;z-index:6">'
+            f'<div style="position:absolute;bottom:0;left:0;right:0;height:6px;background:#4a5580;'
+            f'border-radius:2px"></div>{tubes}</div>')
+
+    # analytical balance
+    bx = rng.choice([3, 9, 88, 93])
+    out.append(
+        f'<div style="position:absolute;left:{bx}%;top:96px;width:62px;height:44px;z-index:6;'
+        f'background:#2b3358;border:2px solid #6b7a8a;border-radius:3px">'
+        f'<div style="position:absolute;top:-7px;left:9px;width:44px;height:8px;background:#8a97ab;'
+        f'border-radius:2px"></div>'
+        f'<div style="position:absolute;bottom:5px;left:7px;width:46px;height:14px;background:#05100f;'
+        f'border:1px solid {a};font-family:monospace;font-size:8px;color:{a};text-align:center;'
+        f'line-height:14px">{rng.choice(["1.50","2.00","15.0","4.98"])} g</div></div>')
+
+    # ice bucket with tubes poking out
+    ix = rng.choice([16, 24, 70, 80])
+    ice = "".join(
+        f'<div style="position:absolute;bottom:16px;left:{6+j*10}px;width:6px;height:16px;'
+        f'background:{rng.choice([CYAN, GREEN, "#dcecff"])};opacity:.85;border-radius:0 0 3px 3px"></div>'
+        for j in range(4))
+    out.append(
+        f'<div style="position:absolute;left:{ix}%;top:104px;width:56px;height:40px;z-index:6">'
+        f'{ice}<div style="position:absolute;bottom:0;left:0;width:56px;height:22px;'
+        f'background:#dfeef7;opacity:.35;border:2px solid #8a97ab;border-radius:3px 3px 6px 6px"></div></div>')
+
+    # sharps bin
+    sx = rng.choice([1, 5, 92, 96])
+    out.append(
+        f'<div style="position:absolute;left:{sx}%;top:150px;width:38px;height:46px;z-index:6;'
+        f'background:#b8352f;border:2px solid #e0574f;border-radius:3px;opacity:.85">'
+        f'<div style="position:absolute;top:4px;left:5px;right:5px;height:8px;background:#6d1c18"></div>'
+        f'<div style="position:absolute;bottom:5px;left:0;right:0;text-align:center;'
+        f'font-family:monospace;font-size:6px;color:#ffdede">SHARPS</div></div>')
+
+    # bench timer, mid-count
+    tx = rng.choice([34, 44, 60])
+    out.append(
+        f'<div style="position:absolute;left:{tx}%;top:100px;width:44px;height:34px;z-index:6;'
+        f'background:#1a1f30;border:2px solid #6b7a8a;border-radius:3px;'
+        f'font-family:monospace;font-size:11px;color:{MAGENTA};text-align:center;line-height:34px">'
+        f'{rng.randint(0,9)}:{rng.randint(10,59)}</div>')
+
+    # a couple of dropped tubes on the floor
+    for _ in range(rng.randint(1, 3)):
+        out.append(
+            f'<div style="position:absolute;bottom:{rng.randint(6,22)}px;left:{rng.randint(4,94)}%;'
+            f'width:14px;height:5px;border-radius:3px;background:{rng.choice([CYAN, GREEN, AMBER])};'
+            f'opacity:.75;z-index:5;transform:rotate({rng.randint(-30,30)}deg)"></div>')
+    return "".join(out)
+
+
 def prop_wall(room: Room, seed: int) -> str:
     rng = random.Random(seed)
-    return PROP_BUILDERS.get(room.key, props_lobby)(room, rng)
+    base = PROP_BUILDERS.get(room.key, props_lobby)(room, rng)
+    return base + bench_kit(room, rng)
 
 
 EXTRA_KEYFRAMES = """
@@ -1890,6 +2000,142 @@ def scene_fire(seed: int) -> str:
     return scene_shell(300, SUITE3, inner)
 
 
+def scene_department(seed: int) -> str:
+    """The Department. AAV viral lab, end of shift, morale event in progress."""
+    rng = random.Random(seed)
+    a = "#c86bff"
+
+    # disco ball with light beams
+    beams = "".join(
+        f'<div style="position:absolute;left:50%;top:52px;width:5px;height:300px;'
+        f'background:linear-gradient(180deg,{rng.choice(["#ff3d8b","#3ff2e0","#ffb627","#5be36a","#c86bff"])},'
+        f'transparent 78%);transform-origin:top center;transform:rotate({j*24-84}deg);'
+        f'opacity:.30;z-index:2;animation:beam {rng.uniform(3.0,6.0):.1f}s ease-in-out infinite alternate"></div>'
+        for j in range(8))
+    ball = (
+        f'<div style="position:absolute;left:50%;margin-left:-26px;top:0;width:4px;height:28px;'
+        f'background:#8a97ab;z-index:6;left:calc(50% - 2px)"></div>'
+        f'<div style="position:absolute;left:50%;margin-left:-26px;top:26px;width:52px;height:52px;'
+        f'border-radius:50%;z-index:6;animation:spinball 4s linear infinite;'
+        f'background:conic-gradient(#dfe6f5 0 12%,#9fb0cc 12% 25%,#dfe6f5 25% 37%,#9fb0cc 37% 50%,'
+        f'#dfe6f5 50% 62%,#9fb0cc 62% 75%,#dfe6f5 75% 87%,#9fb0cc 87% 100%);'
+        f'box-shadow:0 0 34px rgba(255,255,255,.55)"></div>')
+
+    # party lights on the ceiling
+    lights = "".join(
+        f'<div style="position:absolute;left:{6+j*11}%;top:6px;width:16px;height:12px;border-radius:0 0 8px 8px;'
+        f'background:{rng.choice(["#ff3d8b","#3ff2e0","#ffb627","#5be36a"])};z-index:6;'
+        f'animation:blinklight {rng.uniform(.5,1.4):.1f}s steps(1) infinite"></div>' for j in range(9))
+
+    # AAV production bench: bioreactors, columns, plates
+    bench = []
+    for k in range(3):
+        x = 4 + k * 12
+        bench.append(
+            f'<div style="position:absolute;left:{x}%;bottom:54px;width:64px;height:88px;z-index:4;'
+            f'background:rgba(200,107,255,.16);border:3px solid {a};border-radius:6px 6px 4px 4px">'
+            f'<div style="position:absolute;bottom:6px;left:6px;right:6px;height:36px;'
+            f'background:rgba(200,107,255,.42);border-radius:3px"></div>'
+            f'<div style="position:absolute;top:6px;left:50%;margin-left:-3px;width:6px;height:16px;'
+            f'background:#8a97ab"></div></div>')
+    for k in range(4):
+        x = 74 + k * 6
+        bench.append(
+            f'<div style="position:absolute;left:{x}%;bottom:54px;width:26px;height:104px;z-index:4;'
+            f'background:rgba(63,242,224,.20);border:2px solid #3ff2e0;border-radius:4px">'
+            f'<div style="position:absolute;bottom:0;left:0;right:0;height:{rng.randint(20,70)}px;'
+            f'background:rgba(63,242,224,.45)"></div></div>')
+    plates = "".join(
+        f'<div style="position:absolute;left:{42+k*5}%;bottom:56px;width:38px;height:26px;z-index:4;'
+        f'background:#dfe6f5;opacity:.22;border:1px solid {a}">'
+        + "".join(f'<div style="position:absolute;left:{2+c*5}px;top:{2+r*5}px;width:3px;height:3px;'
+                  f'border-radius:50%;background:{a};opacity:.8"></div>'
+                  for r in range(4) for c in range(7))
+        + '</div>' for k in range(3))
+
+    # four scientists, each doing something
+    def sci(left, delay, anim, coat="#f4f6ff"):
+        return (
+            f'<div style="position:absolute;bottom:46px;left:{left}%;width:36px;z-index:8;'
+            f'animation:{anim} {rng.uniform(1.6,3.0):.1f}s ease-in-out {delay:.1f}s infinite">'
+            f'<div style="width:20px;height:18px;background:#f0d2b4;border-radius:4px;margin:0 auto;position:relative">'
+            f'<div style="position:absolute;top:5px;left:-2px;width:24px;height:7px;background:{a};'
+            f'border:1px solid #10142a;border-radius:3px"></div></div>'
+            f'<div style="width:34px;height:38px;background:{coat};border:1px solid #b9bfd8;'
+            f'border-radius:4px 4px 2px 2px;margin:0 auto"></div>'
+            f'<div style="width:26px;height:16px;background:#2b3358;margin:0 auto"></div></div>')
+    scientists = (sci(20, 0.0, "bobdance") + sci(35, 0.4, "sway3") +
+                  sci(58, 0.8, "bobdance") + sci(68, 1.2, "sway3"))
+
+    # monkeys in lab coats
+    monkeys = "".join(
+        f'<div style="position:absolute;bottom:46px;left:{8+k*21}%;width:30px;z-index:9;'
+        f'animation:bobdance {rng.uniform(1.2,2.2):.1f}s ease-in-out {k*0.3:.1f}s infinite">'
+        f'<div style="position:relative;width:30px;height:26px;margin:0 auto">'
+        f'<div style="position:absolute;top:4px;left:0;width:9px;height:9px;background:#8a6240;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:4px;right:0;width:9px;height:9px;background:#8a6240;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:2px;left:6px;width:19px;height:17px;background:#8a6240;'
+        f'border-radius:50% 50% 45% 45%"></div>'
+        f'<div style="position:absolute;top:7px;left:9px;width:13px;height:9px;background:#d9b18a;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:9px;left:11px;width:2px;height:2px;background:#2a1d12;border-radius:50%"></div>'
+        f'<div style="position:absolute;top:9px;left:17px;width:2px;height:2px;background:#2a1d12;border-radius:50%"></div>'
+        f'</div>'
+        f'<div style="width:26px;height:26px;background:#f4f6ff;border:1px solid #b9bfd8;'
+        f'border-radius:3px;margin:0 auto;position:relative">'
+        f'<div style="position:absolute;top:0;left:12px;width:2px;height:26px;background:#d4d9ea"></div></div>'
+        f'<div style="width:9px;height:20px;border:2px solid #8a6240;border-radius:50%;'
+        f'border-right-color:transparent;border-top-color:transparent;margin:-18px 0 0 -6px"></div>'
+        f'</div>' for k in range(4))
+
+    # a small fire nobody has noticed
+    fire = (
+        f'<div style="position:absolute;left:46%;bottom:78px;z-index:7">'
+        + "".join(f'<div style="position:absolute;left:{j*9}px;bottom:0;width:13px;'
+                  f'height:{18+j*6}px;border-radius:50% 50% 30% 30%;'
+                  f'background:linear-gradient(180deg,#fff8b0,#ffb01f 55%,#ff3d0f);'
+                  f'animation:lick2 {0.35+j*0.12:.2f}s ease-in-out infinite alternate"></div>'
+                  for j in range(3))
+        + f'<div style="position:absolute;left:-2px;bottom:34px;width:34px;height:34px;border-radius:50%;'
+          f'background:rgba(60,50,50,.45);animation:billow 2.6s ease-out infinite"></div></div>')
+
+    notes = "".join(
+        f'<div style="position:absolute;left:{rng.randint(6,92)}%;bottom:60px;z-index:9;color:{a};'
+        f'font-size:{rng.randint(13,21)}px;opacity:.75;'
+        f'animation:rise {rng.uniform(3.0,5.4):.1f}s linear {rng.uniform(0,3):.1f}s infinite">'
+        f'{rng.choice(["&#9834;","&#9835;","&#9838;"])}</div>' for _ in range(9))
+
+    inner = f"""
+    <style>
+      @keyframes spinball {{ to {{ transform:rotate(360deg) }} }}
+      @keyframes beam {{ 0%{{transform:rotate(var(--r,0deg)) scaleY(.85);opacity:.18}}
+                         100%{{opacity:.42}} }}
+      @keyframes blinklight {{ 0%,49%{{opacity:1}} 50%,100%{{opacity:.25}} }}
+      @keyframes bobdance {{ 0%,100%{{transform:translateY(0) rotate(-3deg)}}
+                             50%{{transform:translateY(-9px) rotate(3deg)}} }}
+      @keyframes sway3 {{ 0%,100%{{transform:translateX(-7px)}} 50%{{transform:translateX(7px)}} }}
+      @keyframes lick2 {{ from{{transform:scaleY(.8)}} to{{transform:scaleY(1.25)}} }}
+      @keyframes billow {{ from{{transform:translateY(0) scale(.5);opacity:.6}}
+                           to{{transform:translateY(-52px) scale(1.9);opacity:0}} }}
+      @keyframes rise {{ from{{transform:translateY(0);opacity:.8}} to{{transform:translateY(-120px);opacity:0}} }}
+      .thanks {{ position:absolute; left:50%; margin-left:-190px; top:104px; width:380px; z-index:10;
+                 background:rgba(0,0,0,.55); border:3px solid {a}; padding:12px 10px; text-align:center;
+                 font-family:'Press Start 2P',monospace; font-size:10px; color:{a}; line-height:1.9;
+                 text-shadow:0 0 12px {a}; }}
+      .deptsign {{ position:absolute; left:3%; top:14px; z-index:10; font-family:'Press Start 2P',monospace;
+                   font-size:9px; color:#ffb627; border:2px solid #ffb627; padding:6px 8px;
+                   background:rgba(0,0,0,.5); line-height:1.8; }}
+    </style>
+    {beams}{ball}{lights}
+    <div style="position:absolute;left:2%;right:2%;bottom:44px;height:10px;background:#2b3358;
+                border-top:2px solid #4a5580;z-index:3"></div>
+    {"".join(bench)}{plates}{fire}
+    {scientists}{monkeys}{notes}
+    <div class="deptsign">THE DEPARTMENT<br><span style="opacity:.65">AAV VECTOR CORE</span></div>
+    <div class="thanks">THANK YOU FOR<br>CHOOSING THE DEPARTMENT</div>
+    """
+    return scene_shell(330, BSL4, inner)
+
+
 def scene_ultra_alert() -> str:
     inner = f"""
     <style>
@@ -2216,6 +2462,8 @@ def load_level(spec: LevelSpec, keep_fails: bool = False):
     ss.total_to_place = spec.to_place
     ss.player = [None] * spec.slots
     ss.pick = 0
+    ss.spilled = False
+    ss.pop("spill_msg", None)
     if not keep_fails:
         ss.fails = 0
     ss.nonce += 1
@@ -2224,7 +2472,8 @@ def load_level(spec: LevelSpec, keep_fails: bool = False):
 
 def reset_game():
     for k in ("phase", "level", "scores", "fails", "lives", "ultra_count", "in_ultra",
-              "submitted", "last_result", "show_help", "burned", "seed"):
+              "submitted", "last_result", "show_help", "burned", "seed", "partied",
+              "spilled", "spill_msg"):
         st.session_state.pop(k, None)
     init_state()
 
@@ -2241,7 +2490,7 @@ def finish_run(reason: str, burned: bool):
 def screen_title():
     ss = st.session_state
     st.markdown(room_background_css("lobby"), unsafe_allow_html=True)
-    components.html(scene_attract(ss.seed), height=484)
+    components.html(scene_attract(ss.seed), height=452)
 
     c1, c2, c3, c4 = st.columns([2, 1.3, 1.3, 1.3])
     with c1:
@@ -2298,7 +2547,8 @@ def screen_intro():
     st.markdown(f'<div class="cc-strip">{room.name} &nbsp;&middot;&nbsp; {spec.name} '
                 f'&nbsp;&middot;&nbsp; {spec.subtitle}</div>', unsafe_allow_html=True)
     st.markdown(room_background_css(room.key), unsafe_allow_html=True)
-    components.html(scene_transit(room, spec.zone, ss.level, ss.seed + ss.level), height=356)
+    st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
+    components.html(scene_transit(room, spec.zone, ss.level, ss.seed + ss.level), height=330)
     time.sleep(4.3)
     ss.phase = "play"
     ss.level_start = time.time()
@@ -2310,7 +2560,8 @@ def screen_ultra_intro():
     st.markdown('<div class="cc-strip" style="color:#ff3d8b">&#9888; UNSCHEDULED RUN &#9888;</div>',
                 unsafe_allow_html=True)
     st.markdown(room_background_css("suite3"), unsafe_allow_html=True)
-    components.html(scene_ultra_alert(), height=294)
+    st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
+    components.html(scene_ultra_alert(), height=280)
     time.sleep(3.0)
     ss.phase = "play"
     ss.level_start = time.time()
@@ -2346,6 +2597,22 @@ def screen_play():
     total = ss.total_to_place
     seated = total - len(ss.hand)
 
+    # someone wheels a cart past and knocks a tube loose, once, mid-level
+    if (spec.spill and not ss.get("spilled") and len(ss.hand) < ss.total_to_place
+            and time.time() - ss.level_start > 11):
+        seated_slots = [i for i in range(spec.slots) if ss.player[i] is not None]
+        empty_slots = [i for i in range(spec.slots)
+                       if ss.player[i] is None and ss.base[i] is None and i not in ss.blocked]
+        if seated_slots and empty_slots:
+            rng = random.Random()
+            frm = rng.choice(seated_slots)
+            to = rng.choice(empty_slots)
+            ss.player[to] = ss.player[frm]
+            ss.player[frm] = None
+            ss.spilled = True
+            ss.spill_msg = f"A cart clipped the bench \u2014 your tube slid from {frm} to {to}."
+            play("nope")
+
     if spec.time_limit and time.time() - ss.level_start > spec.time_limit:
         ss.last_result = ("timeout", resid, tol, 0, 0, 0)
         play("alarm"); ss.phase = "explode"; st.rerun()
@@ -2361,12 +2628,16 @@ def screen_play():
     st.markdown(header, unsafe_allow_html=True)
     if spec.gimmick:
         st.markdown(f'<div class="cc-gimmick">&#9888; {spec.gimmick}</div>', unsafe_allow_html=True)
+    if ss.get("spill_msg"):
+        st.markdown(f'<div class="cc-gimmick" style="color:#ffb627;border-color:#ffb627;'
+                    f'background:rgba(255,182,39,.10)">{ss.pop("spill_msg")}</div>',
+                    unsafe_allow_html=True)
 
     # --- rotor, centred ---
     _, mid, _ = st.columns([1, 2.1, 1])
     with mid:
         fig = rotor_figure(spec, room, ss.base, ss.player, ss.blocked,
-                           show_needle=not blind, height=560)
+                           show_needle=not blind, height=440)
         event = st.plotly_chart(fig, key=f"rotor_{ss.nonce}", on_select="rerun",
                                 selection_mode="points",
                                 config={"displayModeBar": False}, **FIG)
@@ -2493,7 +2764,8 @@ def screen_spin():
 
     st.markdown('<div class="cc-strip">SPINNING UP</div>', unsafe_allow_html=True)
     st.markdown(room_background_css(current_room().key), unsafe_allow_html=True)
-    components.html(scene_spin(spec.zone, current_room(), spec.slots), height=294)
+    st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
+    components.html(scene_spin(spec.zone, current_room(), spec.slots), height=280)
     time.sleep(2.0)
 
     if resid > tol:
@@ -2524,7 +2796,8 @@ def screen_explode():
                 f'{"TIMER EXPIRED" if kind == "timeout" else "IMBALANCE ALARM"}</div>',
                 unsafe_allow_html=True)
     play_now("boom")
-    components.html(scene_explode(current_room(), lethal), height=294)
+    st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
+    components.html(scene_explode(current_room(), lethal), height=280)
     time.sleep(2.7)
 
     if spec.sudden_death:
@@ -2616,7 +2889,8 @@ def screen_burn():
     st.markdown('<div class="cc-strip" style="color:#ffca6b">SHIFT OVER</div>', unsafe_allow_html=True)
     if ss.burned:
         play_now("over")
-        components.html(scene_fire(ss.seed), height=314)
+        st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
+        components.html(scene_fire(ss.seed), height=300)
         time.sleep(3.0)
     ss.phase = "gameover"
     st.rerun()
@@ -2643,11 +2917,12 @@ def screen_gameover():
                     "seconds": shift, "when": time.strftime("%Y-%m-%d")})
         ss.submitted = True
 
-    a, b = st.columns([1, 1], gap="medium")
+    a, b, c = st.columns([1.25, 0.85, 1.6], gap="medium")
     with a:
         st.markdown('<p class="cc-readout" style="text-align:left">GLOBAL TOP 10</p>',
                     unsafe_allow_html=True)
-        st.markdown(leaderboard_table(load_scores(), highlight=ss.name), unsafe_allow_html=True)
+        st.markdown(leaderboard_table(load_scores(), highlight=ss.name, top=8),
+                    unsafe_allow_html=True)
         st.markdown(f'<p class="cc-readout" style="font-size:.66rem;text-align:left">'
                     f'stored in: {backend_name()}</p>', unsafe_allow_html=True)
     with b:
@@ -2657,7 +2932,14 @@ def screen_gameover():
                        for i, v in enumerate(ss.scores)) or "<tr><td>-</td><td>0</td></tr>"
         st.markdown(f'<table class="cc-lb"><tr><th>#</th><th>Points</th></tr>{rows}</table>',
                     unsafe_allow_html=True)
-        st.write("")
+    with c:
+        if not ss.get("partied"):
+            play_now("party")
+            ss.partied = True
+        components.html(scene_department(ss.seed), height=344)
+
+    d = st.columns([1, 1.6, 1])[1]
+    with d:
         if st.button("NEW SHIFT", type="primary", **BTN):
             reset_game()
             st.rerun()
