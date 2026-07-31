@@ -191,6 +191,39 @@ ULTRA_MAX = 2
 ULTRA_EARLIEST = 3
 
 
+def daily_spec(datestr: Optional[str] = None) -> LevelSpec:
+    """One oversized rotor per day, identical for everybody. Built from the date
+    so it is reproducible without storing anything."""
+    datestr = datestr or time.strftime("%Y-%m-%d")
+    rng = random.Random("centrifuge-chess|daily|" + datestr)
+
+    slots = rng.choice([36, 40, 44, 48])
+    # total tubes must be reachable with groups of 2/3/4 that divide `slots`;
+    # keeping it even means pairs alone always suffice.
+    total = rng.choice([slots // 2, slots // 2 + 2, slots // 2 + 4])
+    blocked = rng.randint(5, 10)
+    while total + blocked > slots - 4:
+        blocked -= 1
+    to_place = rng.randint(5, 8)
+    extra = rng.choice([0, 0, 2, 3])
+    zone = rng.choice([TEACHING, CORE, COLD, PREP])
+    return LevelSpec(
+        name=f"DAILY {slots}", subtitle=f"today's rotor · {datestr}",
+        slots=slots, total_tubes=total, to_place=to_place, blocked=blocked,
+        masses=(1.5, 2.0, 5.0, 15.0, 50.0), tol_frac=0.40,
+        par_seconds=180, zone=zone, style=rng.randint(0, 2),
+        extra_tubes=extra,
+        gimmick=(f"DAILY CHALLENGE \u2014 {slots} positions, {to_place} tubes"
+                 + (f", {extra} spares you must NOT use" if extra else "")),
+    )
+
+
+def daily_room(datestr: Optional[str] = None) -> Room:
+    datestr = datestr or time.strftime("%Y-%m-%d")
+    pool = [r for r in ALL_ROOMS if r.key != "suite3"]
+    return random.Random("room|" + datestr).choice(pool)
+
+
 def streak_multiplier(streak: int) -> float:
     """1.0 on the first clean spin, +0.2 each consecutive one, capped at 2.4x."""
     return 1.0 + STREAK_STEP * min(streak, STREAK_CAP)
@@ -458,11 +491,13 @@ body, p, li, div[data-testid="stMarkdownContainer"] { font-family: 'IBM Plex Mon
 .cc-centre { text-align:center; }
 /* During blocking animations Streamlit keeps the previous screen on the page.
    This drops an opaque sheet over it and lifts the animation above. */
-.cc-blackout { position:fixed; inset:0; background:#06070d; z-index:500; }
-/* stale content can also sit BELOW the fold, so lock scrolling while it plays */
-body:has(.cc-blackout), html:has(.cc-blackout) { overflow:hidden !important; }
-[data-testid="stAppViewContainer"]:has(.cc-blackout) { overflow:hidden !important; height:100vh !important; }
-[data-testid="stMain"]:has(.cc-blackout) { overflow:hidden !important; }
+/* Streamlit keeps the PREVIOUS screen mounted while a script is still running and
+   tags it data-stale. During our blocking animations that left the old rotor and
+   HUD visible underneath. Removing stale elements outright is the correct fix -- an
+   overlay only ever covered the viewport, never the page below the fold. */
+[data-stale="true"] { display: none !important; }
+[data-testid="stElementContainer"][data-stale="true"] { display: none !important; }
+.cc-blackout { position:fixed; inset:0; background:#06070d; z-index:1; }
 .cc-lift, .cc-lift * { position:relative; z-index:900; }
 [data-testid="stCustomComponentV1"], iframe { position:relative; z-index:900; }
 .element-container:has(iframe) { position:relative; z-index:900; }
@@ -1256,8 +1291,9 @@ def bench_kit(room: Room, seed: int) -> str:
 
 def prop_wall(room: Room, seed: int) -> str:
     rng = random.Random(seed)
-    base = PROP_BUILDERS.get(room.key, props_lobby)(room, rng)
-    return base + bench_kit(room, seed)
+    # Deliberately no generic "bench kit" here: shared clutter competed with each
+    # room's own fixtures and made every lab read the same.
+    return PROP_BUILDERS.get(room.key, props_lobby)(room, rng)
 
 
 EXTRA_KEYFRAMES = """
@@ -1844,7 +1880,8 @@ def scene_attract(seed: int) -> str:
     return scene_shell(470, r, inner)
 
 
-def scene_transit(room: Room, zone: Zone, level_idx: int, seed: int) -> str:
+def scene_transit(room: Room, zone: Zone, level_idx: int, seed: int,
+                  label: str = "") -> str:
     """Scientist crosses a themed room, stops to look at something, moves on.
     A blurred doorframe and bench edge sit in front for depth."""
     a = room.accent
@@ -1906,7 +1943,7 @@ def scene_transit(room: Room, zone: Zone, level_idx: int, seed: int) -> str:
     {fg}
     <div class="dim"></div>
     <div class="card"><b>{room.name}</b><i>{room.sign}</i></div>
-    <div class="caption cap3">LEVEL {level_idx+1} &mdash; {zone.name} &mdash; {room.name}</div>
+    <div class="caption cap3">{label or f"LEVEL {level_idx+1}"} &mdash; {zone.name} &mdash; {room.name}</div>
     """
     return scene_shell(340, room, inner)
 
@@ -2325,6 +2362,31 @@ def countdown_html(seconds_left: float) -> str:
 # ==========================================================================
 # 7. ROTOR
 # ==========================================================================
+# Okabe-Ito safe palette. Shapes carry the meaning too, so the rotor stays
+# readable even in greyscale.
+CB_PALETTE = {"locked": "#0072B2", "player": "#E69F00",
+              "needle": "#CC79A7", "blocked": "#9A9A9A", "ok": "#0072B2"}
+DEFAULT_PALETTE = {"locked": GREEN, "player": CYAN,
+                   "needle": MAGENTA, "blocked": MAGENTA, "ok": GREEN}
+
+
+def palette() -> Dict[str, str]:
+    return CB_PALETTE if st.session_state.get("cb") else DEFAULT_PALETTE
+
+
+CB_CSS = """
+<style>
+.stButton > button[kind="primary"] { background:#E69F00 !important; color:#06070d !important;
+    border-color:#E69F00 !important; box-shadow:0 0 14px rgba(230,159,0,.45) !important; }
+.cc-ok { color:#0072B2 !important; }
+.cc-bad { color:#CC79A7 !important; }
+.tray-done { border-color:#0072B2 !important; color:#0072B2 !important;
+             background:rgba(0,114,178,.13) !important; }
+.pip-done { color:#E69F00 !important; }
+</style>
+"""
+
+
 def tube_size(mass: float) -> float:
     return 16 + 7.4 * math.sqrt(mass)
 
@@ -2411,27 +2473,33 @@ def rotor_figure(spec: LevelSpec, room: Room, base, player, blocked: Set[int],
     shapes.append(dict(type="circle", x0=-hub, y0=-hub, x1=hub, y1=hub,
                        line=dict(color=z.plate_edge, width=2), fillcolor="#06070d", layer="below"))
 
-    xs, ys, colors, sizes, lines, hover = [], [], [], [], [], []
+    pal = palette()
+    xs, ys, colors, sizes, lines, hover, syms = [], [], [], [], [], [], []
     for i in range(n):
         x, y = slot_xy(i, n, 1.0)
         xs.append(x); ys.append(y)
         m = loads[i]
         if i in blocked:
-            colors.append("rgba(255,61,139,0.10)"); sizes.append(20)
-            lines.append(MAGENTA); hover.append(f"{i} · cracked bucket")
+            colors.append("rgba(0,0,0,0.10)"); sizes.append(20)
+            lines.append(pal["blocked"]); syms.append("x-thin")
+            hover.append(f"{i} · cracked bucket")
         elif m is None:
             colors.append("rgba(6,7,13,0.85)"); sizes.append(20)
-            lines.append(STEEL); hover.append(f"{i} · empty — click to load")
+            lines.append(STEEL); syms.append("circle")
+            hover.append(f"{i} · empty — click to load")
         elif base[i] is not None:
-            colors.append(GREEN); sizes.append(tube_size(m))
-            lines.append("#0a2a10"); hover.append(f"{i} · locked {m:g} g")
+            colors.append(pal["locked"]); sizes.append(tube_size(m))
+            lines.append("#04121f"); syms.append("circle")
+            hover.append(f"{i} · locked {m:g} g")
         else:
-            colors.append(CYAN); sizes.append(tube_size(m))
-            lines.append("#062a28"); hover.append(f"{i} · yours {m:g} g — click to lift")
+            colors.append(pal["player"]); sizes.append(tube_size(m) * 1.05)
+            lines.append("#2a1a00"); syms.append("diamond")
+            hover.append(f"{i} · yours {m:g} g — click to lift")
 
     fig.add_trace(go.Scatter(
         x=xs, y=ys, mode="markers", customdata=list(range(n)),
-        marker=dict(color=colors, size=sizes, line=dict(color=lines, width=2)),
+        marker=dict(color=colors, size=sizes, symbol=syms,
+                    line=dict(color=lines, width=2)),
         hovertext=hover, hoverinfo="text",
         selected=dict(marker=dict(opacity=1.0)), unselected=dict(marker=dict(opacity=1.0)),
         showlegend=False))
@@ -2456,13 +2524,15 @@ def rotor_figure(spec: LevelSpec, room: Room, base, player, blocked: Set[int],
         if mag > 1e-9:
             scale = min(1.02, 0.20 + mag * 0.075)
             shapes.append(dict(type="line", x0=0, y0=0, x1=scale * vx / mag, y1=-scale * vy / mag,
-                               line=dict(color=MAGENTA, width=5), layer="above"))
+                               line=dict(color=pal["needle"], width=5), layer="above"))
         else:
             shapes.append(dict(type="circle", x0=-0.10, y0=-0.10, x1=0.10, y1=0.10,
-                               fillcolor=GREEN, line=dict(color=GREEN, width=1), layer="above"))
+                               fillcolor=pal["ok"], line=dict(color=pal["ok"], width=1),
+                               layer="above"))
     else:
         ann.append(dict(x=0, y=0, text="?", showarrow=False,
-                        font=dict(family="Press Start 2P, monospace", size=15, color=MAGENTA)))
+                        font=dict(family="Press Start 2P, monospace", size=15,
+                                  color=pal["needle"])))
 
     fig.update_layout(
         shapes=shapes, annotations=ann,
@@ -2552,13 +2622,13 @@ def leaderboard_table(rows: List[dict], highlight: Optional[str] = None, top: in
     if not rows:
         return '<p class="cc-readout">No scores logged yet. Be the first.</p>'
     out = ['<table class="cc-lb"><tr><th>#</th><th>Operator</th><th>Score</th>'
-           '<th>Levels</th><th>Time</th></tr>']
+           '<th>Done</th><th>Time</th></tr>']
     for i, r in enumerate(rows, 1):
         me = ' class="me"' if highlight and str(r.get("name")) == highlight else ""
         s = int(float(r.get("seconds", 0)))
         out.append(f"<tr{me}><td class='rank'>{i:02d}</td><td>{r.get('name','???')}</td>"
                    f"<td>{int(float(r.get('score',0)))}</td>"
-                   f"<td>{int(float(r.get('levels',0)))}/{len(LEVELS)}</td>"
+                   f"<td>{int(float(r.get('levels',0)))}</td>"
                    f"<td>{s//60}:{s%60:02d}</td></tr>")
     out.append("</table>")
     return "".join(out)
@@ -2584,6 +2654,7 @@ def init_state():
     ss.setdefault("streak", 0)
     ss.setdefault("best_streak", 0)
     ss.setdefault("daily", False)
+    ss.setdefault("cb", False)
     ss.setdefault("seed", random.randint(0, 9999))
     ss.setdefault("submitted", False)
     ss.setdefault("muted", False)
@@ -2593,19 +2664,24 @@ def init_state():
 
 
 def current_spec() -> LevelSpec:
-    return ULTRA_SPEC if st.session_state.in_ultra else LEVELS[st.session_state.level]
+    ss = st.session_state
+    if ss.get("daily"):
+        return ss.daily_spec
+    return ULTRA_SPEC if ss.in_ultra else LEVELS[ss.level]
 
 
 def current_room() -> Room:
-    return SUITE3 if st.session_state.in_ultra else room_for(st.session_state.level)
+    ss = st.session_state
+    if ss.get("daily"):
+        return ss.daily_room
+    return SUITE3 if ss.in_ultra else room_for(ss.level)
 
 
 def level_rng(spec: LevelSpec) -> random.Random:
     """Daily runs are seeded from the date, so every player gets the same rotors."""
     ss = st.session_state
     if ss.get("daily"):
-        stamp = f"{time.strftime('%Y-%m-%d')}|{ss.get('level',0)}|{spec.name}|{ss.get('in_ultra')}"
-        return random.Random(stamp)
+        return random.Random("rotor|" + time.strftime("%Y-%m-%d") + "|" + spec.name)
     return random.Random()
 
 
@@ -2630,7 +2706,7 @@ def load_level(spec: LevelSpec, keep_fails: bool = False):
 def reset_game():
     for k in ("phase", "level", "scores", "fails", "lives", "ultra_count", "in_ultra",
               "submitted", "last_result", "show_help", "burned", "seed", "partied",
-              "streak", "best_streak", "daily", "required"):
+              "streak", "best_streak", "daily", "required", "daily_spec", "daily_room"):
         st.session_state.pop(k, None)
     init_state()
 
@@ -2676,9 +2752,11 @@ def screen_title():
             ss.submitted, ss.burned = False, False
             ss.streak, ss.best_streak = 0, 0
             ss.daily = True
+            ss.daily_spec = daily_spec()
+            ss.daily_room = daily_room()
             ss.seed = int(time.strftime("%Y%m%d"))
             ss.game_start = time.time()
-            load_level(LEVELS[0])
+            load_level(ss.daily_spec)
             ss.phase = "intro"
             st.rerun()
     with c3:
@@ -2688,6 +2766,12 @@ def screen_title():
     with c4:
         if st.button("SOUND: OFF" if ss.muted else "SOUND: ON", **BTN):
             ss.muted = not ss.muted
+            st.rerun()
+
+    e1, e2 = st.columns([2, 4.9])
+    with e1:
+        if st.button("COLORBLIND: ON" if ss.cb else "COLORBLIND: OFF", **BTN):
+            ss.cb = not ss.cb
             st.rerun()
 
     d1, d2 = st.columns([2, 4.9])
@@ -2705,9 +2789,11 @@ def screen_title():
             Click a rotor position to seat the selected tube. Click your own tube to lift it out.
             The <span style="color:{MAGENTA}">magenta needle</span> shows where the rotor is pulling &mdash;
             shrink it to nothing, close the lid, walk to the next machine.<br>
-            <span style="color:{GREEN}">Green</span> = locked in already &nbsp;&middot;&nbsp;
-            <span style="color:{CYAN}">Cyan</span> = yours &nbsp;&middot;&nbsp;
-            <span style="color:{MAGENTA}">Dashed</span> = cracked bucket, unusable<br>
+            <span style="color:{palette()['locked']}">&#9679; round</span> = locked in already
+            &nbsp;&middot;&nbsp;
+            <span style="color:{palette()['player']}">&#9670; diamond</span> = yours
+            &nbsp;&middot;&nbsp;
+            <span style="color:{palette()['blocked']}">&#10006;</span> = cracked bucket, unusable<br>
             <span class="cc-amber">3 lives.</span> Spin unbalanced and one is gone.
             If the PA calls you to Suite 3, there are no lives in there.
             </p></div>""", unsafe_allow_html=True)
@@ -2715,13 +2801,15 @@ def screen_title():
 
 def screen_intro():
     ss = st.session_state
-    spec = LEVELS[ss.level]
-    room = room_for(ss.level)
+    spec = current_spec()
+    room = current_room()
     st.markdown(f'<div class="cc-strip">{room.name} &nbsp;&middot;&nbsp; {spec.name} '
                 f'&nbsp;&middot;&nbsp; {spec.subtitle}</div>', unsafe_allow_html=True)
     st.markdown(room_background_css(room.key), unsafe_allow_html=True)
     st.markdown('<div class="cc-blackout"></div>', unsafe_allow_html=True)
-    components.html(scene_transit(room, spec.zone, ss.level, ss.seed + ss.level), height=330)
+    components.html(scene_transit(room, spec.zone, ss.level, ss.seed + ss.level,
+                                  label=("DAILY CHALLENGE" if ss.get("daily")
+                                         else f"LEVEL {ss.level+1}")), height=330)
     time.sleep(4.3)
     ss.phase = "play"
     ss.level_start = time.time()
@@ -2787,9 +2875,9 @@ def screen_play():
               f'&nbsp;&middot;&nbsp; {spec.subtitle}</div>')
     st.markdown(header, unsafe_allow_html=True)
     if ss.get("daily"):
-        st.markdown(f'<div class="cc-strip" style="color:#3ff2e0;font-size:.55rem">'
+        st.markdown(f'<div class="cc-strip" style="color:{palette()["player"]};font-size:.55rem">'
                     f'DAILY CHALLENGE &middot; {time.strftime("%Y-%m-%d")} &middot; '
-                    f'same rotors for everyone</div>', unsafe_allow_html=True)
+                    f'every player gets this exact rotor</div>', unsafe_allow_html=True)
     if spec.gimmick:
         st.markdown(f'<div class="cc-gimmick">&#9888; {spec.gimmick}</div>', unsafe_allow_html=True)
 
@@ -2821,7 +2909,12 @@ def screen_play():
     with right:
         hearts = ("&#9829;" * ss.lives +
                   '<span style="color:#333a58">&#9829;</span>' * (START_LIVES - ss.lives))
-        tag = "SUITE 3" if spec.sudden_death else f"{ss.level+1:02d}/{len(LEVELS)}"
+        if ss.get("daily"):
+            tag = "DAILY"
+        elif spec.sudden_death:
+            tag = "SUITE 3"
+        else:
+            tag = f"{ss.level+1:02d}/{len(LEVELS)}"
         clock = (f'<div><span class="k">LIMIT</span><span style="color:{MAGENTA}">'
                  f'{spec.time_limit}s</span></div>' if spec.time_limit
                  else f'<div><span class="k">PAR</span>{spec.par_seconds}s</div>')
@@ -3033,17 +3126,21 @@ def screen_result():
                 st.rerun()
         return
 
+    if ss.get("daily"):
+        with c:
+            if st.button("SUBMIT DAILY RUN", type="primary", **BTN):
+                finish_run(f"You cleared today's {current_spec().slots}-position rotor.", False)
+                st.rerun()
+        return
+
     last = ss.level + 1 >= len(LEVELS)
     with c:
         if st.button("END SHIFT" if last else "NEXT CENTRIFUGE", type="primary", **BTN):
             if last:
                 finish_run("You balanced every rotor on the bench and went home clean.", False)
             else:
-                if ss.get("daily"):
-                    hit = (ss.level == 6 and ss.ultra_count == 0)
-                else:
-                    hit = (ss.level >= ULTRA_EARLIEST and ss.ultra_count < ULTRA_MAX
-                           and random.Random().random() < ULTRA_CHANCE)
+                hit = (ss.level >= ULTRA_EARLIEST and ss.ultra_count < ULTRA_MAX
+                       and random.Random().random() < ULTRA_CHANCE)
                 if hit:
                     ss.in_ultra = True
                     ss.ultra_count += 1
@@ -3080,7 +3177,8 @@ def screen_gameover():
         f'<div class="cc-panel"><div class="cc-hud">'
         f'<div><span class="k">OPERATOR</span>{ss.name}</div>'
         f'<div><span class="k">FINAL SCORE</span>{total}</div>'
-        f'<div><span class="k">LEVELS</span>{len(ss.scores)}/{len(LEVELS)}</div>'
+        f'<div><span class="k">CLEARED</span>'
+        f'{len(ss.scores)}/{1 if ss.get("daily") else len(LEVELS)}</div>'
         f'<div><span class="k">BEST STREAK</span>x{streak_multiplier(max(0,ss.get("best_streak",1)-1)):.1f}</div>'
         f'<div><span class="k">LIVES LEFT</span>{ss.lives}</div>'
         f'<div><span class="k">SHIFT TIME</span>{shift//60}:{shift%60:02d}</div>'
@@ -3138,6 +3236,8 @@ def screen_scores_only():
 def main():
     st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
     init_state()
+    if st.session_state.get("cb"):
+        st.markdown(CB_CSS, unsafe_allow_html=True)
     emit_sound()
     {
         "title": screen_title,
